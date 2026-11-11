@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "nova/vm.hpp"
 
 namespace nova {

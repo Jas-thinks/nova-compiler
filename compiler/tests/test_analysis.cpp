@@ -1,5 +1,6 @@
 // Tests for: grammar/table verification, parser recovery, AST validation, IR/CFG/data-flow/SSA/regalloc algorithms,
 // bytecode verifier, arithmetic boundaries, regression corpus, fuzzing framework.
+#include <algorithm>
 #include <dirent.h>
 #include <fstream>
 #include <sstream>

@@ -1,4 +1,5 @@
 // Random NOVA program generator + differential fuzz driver.
+#include <algorithm>
 #include <fstream>
 #include <map>
 #include <random>
