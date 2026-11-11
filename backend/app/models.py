@@ -111,6 +111,22 @@ class ExplorerCRequest(BaseModel):
     opt_level: int = Field(default=1, ge=0, le=3)
 
 
+class AsmRequest(BaseModel):
+    source: str = Field(..., max_length=config.MAX_SOURCE_BYTES)
+    passes: list[str] | None = None
+    regalloc: bool = True
+
+    @field_validator("passes")
+    @classmethod
+    def _known_passes(cls, v):
+        if v is None:
+            return v
+        unknown = sorted(set(v) - PASS_IDS)
+        if unknown:
+            raise ValueError(f"unknown optimization pass(es): {', '.join(unknown)}")
+        return sorted(set(v))
+
+
 class SqlRequest(BaseModel):
     script: str = Field(..., max_length=64 * 1024)
 

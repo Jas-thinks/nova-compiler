@@ -140,10 +140,11 @@ def suggest(source: str, include_warnings: bool = True) -> dict:
             f["errorsBefore"], f["errorsAfter"] = len(base_errors), len(after_errors)
             f["verified"] = bool(gone and len(after_errors) <= len(base_errors) - (1 if d["severity"] == "error" else 0))
             f["compilesAfter"] = bool(after.get("success"))
+            f["patched"] = patched
             f["diff"] = "".join(difflib.unified_diff(source.splitlines(True), patched.splitlines(True), "original.nova", "fixed.nova"))
             fixes.append(f)
     fixes.sort(key=lambda f: (not f["verified"], f["severity"] != "error", f["line"]))
-    return {"errors": len(base_errors), "compiles": bool(res.get("success")), "fixes": fixes}
+    return {"errors": len(base_errors), "compiles": bool(res.get("success")), "diagnostics": res.get("diagnostics", []), "fixes": fixes}
 
 
 def autofix(source: str) -> dict:

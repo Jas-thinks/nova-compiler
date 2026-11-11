@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import {
   BookOpen, Boxes, BugPlay, Cpu, FlaskConical, GraduationCap, Layers, LayoutDashboard, ListTree, Loader2, Network, Play, ScanText,
-  Database, Sigma, SquareTerminal, Menu, GitBranch, Telescope, TestTube2, TriangleAlert, Zap, X,
+  Bot, Database, Sigma, SquareTerminal, Menu, GitBranch, Telescope, TestTube2, TriangleAlert, Zap, X,
 } from 'lucide-react'
 import { NovaProvider, useNova } from './state/NovaContext'
 import { useHashRoute } from './hooks/useHashRoute'
@@ -24,15 +24,18 @@ const Learn = lazy(() => import('./pages/Learn'))
 const Analysis = lazy(() => import('./pages/Analysis'))
 const Explorer = lazy(() => import('./pages/Explorer'))
 const SqlLab = lazy(() => import('./pages/SqlLab'))
+const Assistant = lazy(() => import('./pages/Assistant'))
+const Native = lazy(() => import('./pages/Native'))
 
-interface NavItem { id: string; label: string; icon: ReactNode; page: ReactNode; group: string }
+interface NavItem { id: string; label: string; icon: ReactNode; page: ReactNode; group: string; standalone?: boolean }   // standalone: page does not use the NOVA compile/run header
 const I = 16
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={I} />, page: <Dashboard />, group: 'Workspace' },
   { id: 'playground', label: 'Compiler Playground', icon: <SquareTerminal size={I} />, page: <Playground />, group: 'Workspace' },
   { id: 'learn', label: 'Learn Mode', icon: <GraduationCap size={I} />, page: <Learn />, group: 'Workspace' },
   { id: 'explorer', label: 'Compiler Explorer', icon: <Telescope size={I} />, page: <Explorer />, group: 'Workspace' },
-  { id: 'sql', label: 'SQL Compiler', icon: <Database size={I} />, page: <SqlLab />, group: 'Workspace' },
+  { id: 'assistant', label: 'AI Assistant', icon: <Bot size={I} />, page: <Assistant />, group: 'Workspace', standalone: true },
+  { id: 'sql', label: 'SQL Compiler', icon: <Database size={I} />, page: <SqlLab />, group: 'Workspace', standalone: true },
   { id: 'lexical', label: 'Lexical Analysis', icon: <ScanText size={I} />, page: <Lexical />, group: 'Front end' },
   { id: 'syntax', label: 'Syntax Analysis', icon: <Network size={I} />, page: <Syntax />, group: 'Front end' },
   { id: 'ast', label: 'AST Explorer', icon: <ListTree size={I} />, page: <AstExplorer />, group: 'Front end' },
@@ -40,7 +43,8 @@ const NAV: NavItem[] = [
   { id: 'ir', label: 'Intermediate Repr.', icon: <Layers size={I} />, page: <IRPage />, group: 'Middle & back end' },
   { id: 'analysis', label: 'CFG & Data-flow', icon: <GitBranch size={I} />, page: <Analysis />, group: 'Middle & back end' },
   { id: 'optimizer', label: 'Optimization Lab', icon: <FlaskConical size={I} />, page: <OptLab />, group: 'Middle & back end' },
-  { id: 'target', label: 'Target Code', icon: <Cpu size={I} />, page: <TargetCode />, group: 'Middle & back end' },
+  { id: 'target', label: 'Target Code (VM)', icon: <Cpu size={I} />, page: <TargetCode />, group: 'Middle & back end' },
+  { id: 'native', label: 'Native x86-64', icon: <Cpu size={I} />, page: <Native />, group: 'Middle & back end' },
   { id: 'debugger', label: 'Debugger', icon: <BugPlay size={I} />, page: <Debugger />, group: 'Runtime' },
   { id: 'memory', label: 'Runtime Memory', icon: <Boxes size={I} />, page: <RuntimeMemory />, group: 'Runtime' },
   { id: 'tests', label: 'Compiler Tests', icon: <TestTube2 size={I} />, page: <Tests />, group: 'Project' },
@@ -100,18 +104,18 @@ function Shell() {
         <header className="h-12 shrink-0 border-b border-ink-700 bg-ink-900 px-4 flex items-center gap-3">
           <button className="btn-icon md:hidden" aria-label="Menu" onClick={() => setNavOpen((o) => !o)}><Menu size={16} /></button>
           <h2 className="font-medium truncate">{current.label}</h2>
-          {status === 'ok' && <Chip tone="ok">compiled</Chip>}
-          {status === 'stale' && <Chip tone="warn" title="Source changed since last compile">source changed — recompile</Chip>}
-          {status === 'error' && <Chip tone="bad">{result!.errorCount} error{result!.errorCount === 1 ? '' : 's'}</Chip>}
-          {result && result.warningCount > 0 && <Chip tone="warn">{result.warningCount} warning{result.warningCount === 1 ? '' : 's'}</Chip>}
-          <div className="ml-auto flex items-center gap-2">
+          {!current.standalone && status === 'ok' && <Chip tone="ok">compiled</Chip>}
+          {!current.standalone && status === 'stale' && <Chip tone="warn" title="Source changed since last compile">source changed — recompile</Chip>}
+          {!current.standalone && status === 'error' && <Chip tone="bad">{result!.errorCount} error{result!.errorCount === 1 ? '' : 's'}</Chip>}
+          {!current.standalone && result && result.warningCount > 0 && <Chip tone="warn">{result.warningCount} warning{result.warningCount === 1 ? '' : 's'}</Chip>}
+          {!current.standalone && <div className="ml-auto flex items-center gap-2">
             <button className="btn" onClick={() => void compile()} disabled={compiling || running} title="Ctrl+Enter">
               {compiling ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Compile
             </button>
             <button className="btn btn-primary" onClick={() => void run()} disabled={compiling || running} title="Ctrl+Shift+Enter">
               {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Run
             </button>
-          </div>
+          </div>}
         </header>
         {(backendError || error) && (
           <div className="px-4 py-2 bg-bad/10 border-b border-bad/30 text-bad flex items-center gap-2">

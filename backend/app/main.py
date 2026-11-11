@@ -29,6 +29,7 @@ from .models import (
     ExecuteRequest,
     ExplorerCRequest,
     ExplainRequest,
+    AsmRequest,
     SourceRequest,
     SqlRequest,
     OptimizeRequest,
@@ -288,6 +289,26 @@ def explain(req: ExplainRequest):
         return {"available": True, "explanation": llm.explain(req.source, req.diagnostic)}
     except Exception as exc:  # network / API failure must not affect compilation
         return {"available": True, "explanation": None, "note": f"explanation service failed: {exc}"}
+
+
+def _asm_stats(text: str) -> dict:
+    ins = [l for l in text.splitlines() if l.startswith("    ") and not l.lstrip().startswith(".")]
+    mem = sum(1 for l in ins if "(%rbp)" in l)
+    return {"instructions": len(ins), "memoryOperands": mem, "functions": sum(1 for l in text.splitlines() if l.startswith("nova_fn_") and l.endswith(":")),
+            "calleeSavedRegisterUses": sum(1 for l in ins if any(r in l for r in ("%rbx", "%r12", "%r13", "%r14", "%r15")))}
+
+
+@app.post("/api/asm")
+def native_asm(req: AsmRequest):
+    """Native x86-64 backend: assembly for the program, with a register-allocation before/after comparison."""
+    res = cc.compile_source(req.source, req.passes, run=False)
+    if not res.get("success"):
+        return {"success": False, "diagnostics": res.get("diagnostics", [])}
+    text = cc.asm(req.source, req.passes, regalloc=req.regalloc)
+    out = {"success": True, "assembly": text, "stats": _asm_stats(text), "regalloc": req.regalloc}
+    other = cc.asm(req.source, req.passes, regalloc=not req.regalloc)
+    out["compare"] = {"with_regalloc": _asm_stats(text if req.regalloc else other), "without_regalloc": _asm_stats(other if req.regalloc else text)}
+    return out
 
 
 @app.post("/api/sql")

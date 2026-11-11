@@ -24,6 +24,22 @@ export default function Dashboard() {
         subtitle="A real compiler for a small statically typed language. The C++17 engine does all the work — lexing, canonical LR(1) parsing, semantic analysis, IR, optimization, bytecode generation and a virtual machine. This website only visualises its output."
       />
 
+      <div className="grid md:grid-cols-3 gap-3 mb-4">
+        {([
+          ['NOVA language & compiler', 'Canonical LR(1) parser · typed AST · SSA/CFG/dataflow analyses · 7 optimization passes incl. interprocedural inlining · stack VM with time-travel debugger · heap arrays & strings.', 'playground', 'Open Playground'],
+          ['Native x86-64 backend', 'IR → System V assembly with a linear-scan register allocator; runs ~11× faster than CPython on call-heavy code. Output is diff-tested against the VM on every example and random programs.', 'native', 'See the assembly'],
+          ['NOVA-SQL query compiler', 'Parser → binder (3-valued NULL logic) → logical plan → rule-based optimizer (pushdown, hash join, top-N) → expression bytecode → executor. Verified against SQLite on thousands of random queries.', 'sql', 'Open SQL Compiler'],
+          ['AI Assistant', 'Compiler-verified quick fixes, iterative auto-fix and rule-based runtime root-cause analysis work offline; optional Claude fixes are re-checked by the compiler before they are shown.', 'assistant', 'Try the Assistant'],
+          ['Differential verification', 'Reference interpreter vs VM vs optimized VM vs native code on 1000s of random programs; ASan/UBSan; garbled-input fuzzing; SQL vs SQLite.', 'tests', 'Run the tests'],
+          ['Language server (LSP)', 'Diagnostics, hover, go-to-definition, references, completion and compiler-verified quick-fix code actions in any LSP editor.', 'docs', 'Read the docs'],
+        ] as const).map(([t, d, to, cta]) => (
+          <div key={t} className="panel p-3 flex flex-col gap-2 hover:border-nova/50 transition-colors">
+            <div className="font-semibold">{t}</div><div className="text-fg-dim flex-1">{d}</div>
+            <button className="btn self-start" onClick={() => go(to)}>{cta} <ArrowRight size={13} /></button>
+          </div>
+        ))}
+      </div>
+
       <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 mb-4">
         <Stat label="Parser" value="LR(1)" sub={health?.parser ? `${health.parser.states} states · ${health.parser.conflicts} conflicts` : 'backend offline'} />
         <Stat label="Backend" value={health ? (health.compiler_found ? 'online' : 'no compiler') : '…'} tone={health?.compiler_found ? 'ok' : 'bad'} sub={health ? `timeout ${health.limits.compile_timeout_s}s · ${health.limits.max_vm_steps.toLocaleString()} steps max` : undefined} />

@@ -264,3 +264,29 @@ export interface SqlResponse {
   diagnostics: SqlDiagnostic[]; statements: SqlStatement[]
   catalog: { name: string; rows: number; columns: { name: string; type: string; notNull: boolean; primaryKey: boolean }[] }[]
 }
+
+// ---- Assistant (verified quick fixes, auto-fix, runtime analysis) ----
+export interface QuickFix {
+  title: string; code: string; line: number; kind: string; severity: string; diagnostic: string
+  verified: boolean; errorsBefore: number; errorsAfter: number; compilesAfter: boolean; diff: string; patched: string
+}
+export interface SuggestResponse { errors: number; compiles: boolean; diagnostics: Diagnostic[]; fixes: QuickFix[] }
+export interface AutofixResponse {
+  status: 'fixed' | 'partial' | 'no_automatic_fix'
+  steps: { title: string; code: string; line: number; errorsBefore: number; errorsAfter: number }[]
+  fixedSource: string | null; remainingErrors: number; diff: string
+}
+export interface RuntimeExplanation {
+  status: 'runtime_error' | 'no_runtime_error' | 'compile_error'; mode: string
+  error?: { message: string; line: number; col: number }; function?: string; sourceLine?: string
+  variables?: Record<string, string>; analysis?: string[]; suggestions?: string[]; output?: string[]; evidence?: string[]
+}
+export interface AiResponse {
+  available: boolean; note?: string; status?: string; analysis?: string | null; fixedSource?: string | null; diff?: string | null
+  attempts?: { attempt: number; verified: boolean; errorCount?: number }[]
+}
+export interface AsmStats { instructions: number; memoryOperands: number; functions: number; calleeSavedRegisterUses: number }
+export interface AsmResponse {
+  success: boolean; diagnostics?: Diagnostic[]; assembly?: string; stats?: AsmStats; regalloc?: boolean
+  compare?: { with_regalloc: AsmStats; without_regalloc: AsmStats }
+}

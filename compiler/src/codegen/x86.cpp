@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace nova {
@@ -247,7 +248,8 @@ struct FnEmitter {
         int frame = (static_cast<int>(slot.size()) + static_cast<int>(usedRegs.size())) * 8; frame = (frame + 15) & ~15;
         if (frame) ins("subq $" + std::to_string(frame) + ", %rsp");
         for (size_t j = 0; j < usedRegs.size(); ++j) ins(std::string("movq ") + usedRegs[j] + ", " + std::to_string(-8 * (regSaveBase + static_cast<int>(j) + 1)) + "(%rbp)");
-        for (auto& kv : slot) ins("movq $0, " + mem(kv.first));
+        { std::set<std::string> zeroed;                      // zero every distinct location once (registers shared by disjoint intervals are cleared once)
+          for (auto& kv : slot) { std::string loc = mem(kv.first); if (zeroed.insert(loc).second) ins("movq $0, " + loc); } }
         for (size_t k = 0; k < f.params.size(); ++k) { ins("movq " + std::to_string(16 + 8 * k) + "(%rbp), %rax"); ins("movq %rax, " + mem(f.params[k].first)); }
         for (auto& i : f.code) {
             switch (i.kind) {

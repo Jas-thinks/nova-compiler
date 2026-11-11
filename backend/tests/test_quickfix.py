@@ -87,3 +87,14 @@ def test_lsp_code_action_offers_the_fix_as_a_workspace_edit():
     assert acts and acts[0]["title"] == "Insert ';'" and acts[0]["kind"] == "quickfix"
     edit = acts[0]["edit"]["changes"][uri][0]
     assert edit["newText"] == ";" and edit["range"]["start"] == edit["range"]["end"]
+
+
+def test_asm_endpoint_reports_register_allocation_effect():
+    src = open(os.path.join(EX, "03_fibonacci.nova")).read()
+    r = client.post("/api/asm", json={"source": src}).json()
+    assert r["success"] and "nova_fn_main" in r["assembly"] and r["stats"]["functions"] >= 2
+    c = r["compare"]
+    assert c["with_regalloc"]["memoryOperands"] < c["without_regalloc"]["memoryOperands"]
+    assert c["with_regalloc"]["calleeSavedRegisterUses"] > 0 and c["without_regalloc"]["calleeSavedRegisterUses"] == 0
+    bad = client.post("/api/asm", json={"source": "fn main() { let x: int = 1.5; }"}).json()
+    assert bad["success"] is False and bad["diagnostics"]

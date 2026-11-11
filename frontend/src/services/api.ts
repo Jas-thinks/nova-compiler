@@ -1,6 +1,6 @@
 import type {
   CompileResponse, DebugStartResponse, DebugState, ExecuteResponse, Example, GrammarInfo, HealthInfo,
-  OptimizeResponse, SqlResponse, TestRunResponse, Capabilities, ExplorerCResult, ExplorerLanguage, LastTests,
+  OptimizeResponse, SqlResponse, SuggestResponse, AutofixResponse, RuntimeExplanation, AiResponse, AsmResponse, TestRunResponse, Capabilities, ExplorerCResult, ExplorerLanguage, LastTests,
 } from '../types/api'
 
 export class ApiError extends Error {
@@ -55,6 +55,12 @@ export const api = {
   debugContinue: (session_id: string, breakpoints: number[]) => post<DebugState>('/api/debug/continue', { session_id, breakpoints }),
   debugBreakpoints: (session_id: string, breakpoints: number[]) => post<DebugState>('/api/debug/breakpoints', { session_id, breakpoints }),
   debugSeek: (session_id: string, cursor: number) => post<DebugState>('/api/debug/seek', { session_id, cursor }),
+  suggest: (source: string) => post<SuggestResponse>('/api/suggest', { source }),
+  autofix: (source: string) => post<AutofixResponse>('/api/autofix', { source }),
+  explainRuntime: (source: string) => post<RuntimeExplanation>('/api/debug/explain', { source }),
+  aiFix: (source: string) => post<AiResponse>('/api/ai/fix', { source }),
+  aiDebug: (source: string) => post<AiResponse>('/api/ai/debug', { source }),
+  asm: (source: string, passes: string[] | null, regalloc: boolean) => post<AsmResponse>('/api/asm', { source, passes, regalloc }),
   sql: (script: string) => post<SqlResponse>('/api/sql', { script }),
   isa: () => request<{ instructions: { op: string; description: string }[] }>('/api/isa').then((r) => r.instructions),
   debugReset: (session_id: string) => post<DebugState>('/api/debug/reset', { session_id }),

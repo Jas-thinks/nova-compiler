@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Play } from 'lucide-react'
 import { Chip, Empty, PageHeader, Panel, Stat } from '../components/ui'
 import { api } from '../services/api'
-import type { SqlResponse, SqlStatement } from '../types/api'
+import type { SqlPlanNode, SqlResponse, SqlStatement } from '../types/api'
 
 const EXAMPLES: Record<string, string> = {
   'Join + GROUP BY + HAVING': `CREATE TABLE users (id INT PRIMARY KEY, name TEXT NOT NULL, age INT, city TEXT);
@@ -30,6 +30,31 @@ SELECT a.v, b.w FROM a, b WHERE a.id = b.id AND a.v > 5 AND b.w < 1000 ORDER BY 
   'Type error with suggestion': `CREATE TABLE users (id INT PRIMARY KEY, name TEXT NOT NULL, age INT);
 INSERT INTO users VALUES (1,'ann',30);
 SELECT nme FROM users WHERE age = 'old';`,
+}
+
+const OP_TONE: Record<string, string> = {
+  Scan: 'border-ok/50 text-ok bg-ok/10', Filter: 'border-warn/50 text-warn bg-warn/10', Join: 'border-nova/50 text-nova bg-nova/10',
+  Aggregate: 'border-bad/40 text-bad bg-bad/10', Project: 'border-ink-500 text-fg-dim bg-ink-800', Sort: 'border-ink-500 text-fg-dim bg-ink-800',
+  Limit: 'border-ink-500 text-fg-dim bg-ink-800', Distinct: 'border-ink-500 text-fg-dim bg-ink-800', OneRow: 'border-ink-500 text-fg-dim bg-ink-800',
+}
+const maxRows = (n: SqlPlanNode): number => Math.max(n.rows, ...n.children.map(maxRows))
+
+function PlanTree({ n, max, root = true }: { n: SqlPlanNode; max: number; root?: boolean }) {
+  return (
+    <div className={root ? '' : 'ml-5 pl-3 border-l border-ink-600'}>
+      <div className="flex items-center gap-2 my-1">
+        <span className={`chip shrink-0 ${OP_TONE[n.op] ?? ''}`}>{n.op}</span>
+        <span className="code text-[12px] text-fg-dim truncate" title={n.detail}>{n.detail.replace(/^\w+\s*/, '')}</span>
+        {n.rows >= 0 && (
+          <span className="ml-auto flex items-center gap-2 shrink-0" title="rows produced by this operator">
+            <span className="w-24 h-1.5 rounded bg-ink-700 overflow-hidden"><span className="block h-full bg-nova" style={{ width: `${(100 * n.rows) / Math.max(1, max)}%` }} /></span>
+            <span className="tabular-nums w-14 text-right">{n.rows} rows</span>
+          </span>
+        )}
+      </div>
+      {n.children.map((c, i) => <PlanTree key={i} n={c} max={max} root={false} />)}
+    </div>
+  )
 }
 
 type Tab = 'results' | 'plan' | 'optimizer' | 'bytecode' | 'ast'
@@ -109,10 +134,10 @@ export default function SqlLab() {
             <div className="flex gap-2 flex-wrap">{res.catalog.map((t) => <Chip key={t.name} tone="nova" title={t.columns.map((c) => `${c.name} ${c.type}${c.primaryKey ? ' PK' : ''}${c.notNull ? ' NOT NULL' : ''}`).join(', ')}>{t.name} · {t.rows} rows</Chip>)}</div>
           )}
           {res && res.statements.length > 0 && (
-            <Panel title="Statements" bodyClass="max-h-32">
+            <Panel title="Statements" bodyClass="max-h-40">
               {res.statements.map((s) => (
                 <button key={s.index} onClick={() => setSel(s.index)} className={`w-full text-left px-3 py-1 flex gap-2 items-center border-l-2 ${sel === s.index ? 'border-nova bg-nova/10' : 'border-transparent hover:bg-ink-800'}`}>
-                  <Chip tone={s.skipped ? 'neutral' : s.ok ? 'ok' : 'bad'}>{s.kind}</Chip><span className="truncate code text-fg-dim">{s.text}</span>
+                  <span className="shrink-0 whitespace-nowrap"><Chip tone={s.skipped ? 'neutral' : s.ok ? 'ok' : 'bad'}>{s.kind}</Chip></span><span className="truncate code text-fg-dim">{s.text}</span>
                 </button>
               ))}
             </Panel>
@@ -121,7 +146,7 @@ export default function SqlLab() {
             <Panel title={<span className="flex gap-1">{(['results', 'plan', 'optimizer', 'bytecode', 'ast'] as Tab[]).map((t) => <button key={t} onClick={() => setTab(t)} className={`px-2 py-0.5 rounded ${tab === t ? 'bg-nova/20 text-fg' : 'text-fg-dim hover:text-fg'}`}>{t}</button>)}</span>}
               right={<span className="code text-fg-mute">{stmt.elapsedMs.toFixed(2)} ms</span>} className="flex-1">
               {tab === 'results' && <Result s={stmt} />}
-              {tab === 'plan' && (stmt.plan ? <div className="p-3 space-y-3"><div><div className="text-2xs uppercase text-fg-mute mb-1">Optimized plan with measured row counts</div><pre className="code whitespace-pre-wrap">{stmt.plan.optimizedWithStats}</pre></div><div className="flex gap-2 flex-wrap">{stats.map(([k, v]) => <Stat key={k} label={k} value={v} />)}</div></div> : <Empty title="No plan" hint="Only SELECT statements have a query plan." />)}
+              {tab === 'plan' && (stmt.plan ? <div className="p-3 space-y-3"><div><div className="text-2xs uppercase text-fg-mute mb-1">Optimized plan — data flows bottom-up; bars show measured rows per operator</div><PlanTree n={stmt.plan.tree} max={maxRows(stmt.plan.tree)} /></div><details className="text-fg-mute"><summary className="cursor-pointer">Plan as written (before optimization)</summary><pre className="code mt-1 whitespace-pre-wrap">{stmt.plan.original}</pre></details><div className="flex gap-2 flex-wrap">{stats.map(([k, v]) => <Stat key={k} label={k.replace(/([A-Z])/g, ' $1').toLowerCase()} value={v} />)}</div></div> : <Empty title="No plan" hint="Only SELECT statements have a query plan." />)}
               {tab === 'optimizer' && (stmt.plan ? (stmt.plan.history.length === 0 ? <Empty title="No rewrite applied" hint="The plan was already optimal for the available rules." /> : <div className="p-3 space-y-4">{stmt.plan.history.map((h, i) => (
                 <div key={i}><div className="flex items-center gap-2"><Chip tone="nova">{h.rule}</Chip></div><div className="text-fg-dim my-1">{h.description}</div>
                   <div className="grid grid-cols-2 gap-2"><pre className="code panel p-2 whitespace-pre-wrap">{h.before}</pre><pre className="code panel p-2 whitespace-pre-wrap">{h.after}</pre></div></div>))}</div>) : <Empty title="No plan" />)}

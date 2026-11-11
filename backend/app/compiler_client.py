@@ -65,6 +65,17 @@ def compile_source(
     return _parse(_run(config.NOVAC_BIN, args, source))
 
 
+def asm(source: str, passes: Sequence[str] | None = None, regalloc: bool = True) -> str:
+    """x86-64 assembly (AT&T syntax) for a program that already compiles."""
+    args = ["asm", "--passes=" + ("all" if passes is None else (",".join(passes) if passes else "none"))]
+    if not regalloc:
+        args.append("--no-regalloc")
+    proc = _run(config.NOVAC_BIN, args, source)
+    if proc.returncode != 0:
+        raise CompilerError("assembly generation failed: " + proc.stderr.decode("utf-8", "replace").strip()[:300])
+    return proc.stdout.decode("utf-8", "replace")
+
+
 def run_sql(script: str) -> dict:
     """NOVA-SQL: compile and execute a ';'-separated script against a fresh in-memory database."""
     return _parse(_run(config.NOVAC_BIN, ["sql"], script))
