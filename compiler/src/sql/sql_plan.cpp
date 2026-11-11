@@ -78,6 +78,23 @@ private:
                 }
                 return ST::Int;
             }
+            case Expr::Case: {
+                const size_t n = e.args.size() - (e.op == "ELSE" ? 1 : 0);
+                ST r = ST::Null;
+                auto unify = [&](Expr& v, ST t) {
+                    if (t == ST::Null) return;
+                    if (r == ST::Null) r = t;
+                    else if (!compat(r, t)) typeErr(v, std::string("CASE branches must have compatible types, got ") + stName(r) + " and " + stName(t), "Every THEN/ELSE value of a CASE must be numeric, or all TEXT.", "Make the branches the same type.");
+                    else r = numResult(r, t) == ST::Float ? ST::Float : r;
+                };
+                for (size_t k = 0; k < n; k += 2) {
+                    ST c = go(*e.args[k], allowAgg, inAgg);
+                    if (c == ST::Text) typeErr(*e.args[k], "CASE WHEN condition must be boolean, not TEXT", "WHEN takes a condition such as x > 0.", "Write a comparison.");
+                    unify(*e.args[k + 1], go(*e.args[k + 1], allowAgg, inAgg));
+                }
+                if (e.op == "ELSE") unify(*e.args.back(), go(*e.args.back(), allowAgg, inAgg));
+                return r;
+            }
             case Expr::Func: return bindFunc(e, allowAgg, inAgg);
             case Expr::Agg: {
                 if (!allowAgg) { err(semErr("Invalid aggregate", "E-SQL-106", "Aggregate function " + e.name + " is not allowed here", "Aggregates are only allowed in the SELECT list, HAVING and ORDER BY — not in WHERE, ON or GROUP BY.", "Move the condition to HAVING.", e.loc)); return ST::Null; }

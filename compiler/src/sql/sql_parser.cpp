@@ -12,7 +12,7 @@ namespace {
 const std::set<std::string>& reserved() {
     static const std::set<std::string> r = {"select", "from", "where", "group", "by", "having", "order", "limit", "offset", "join", "inner", "left",
         "outer", "cross", "on", "and", "or", "not", "null", "is", "like", "in", "between", "as", "distinct", "all", "insert", "into", "values",
-        "update", "set", "delete", "create", "table", "drop", "primary", "key", "if", "exists", "asc", "desc", "true", "false"};
+        "update", "set", "delete", "create", "table", "drop", "primary", "key", "if", "exists", "asc", "desc", "true", "false", "case", "when", "then", "else", "end"};
     return r;
 }
 
@@ -287,6 +287,18 @@ private:
         if (isOp("(")) { ++p_; auto e = expr(); expectOp(")"); return e; }
         if (t.k == SToken::Ident) {
             if (t.text == "null") { ++p_; return mk(Expr::Lit, "", loc); }
+            if (t.text == "case") {
+                ++p_; auto e = mk(Expr::Case, "", loc);
+                ExprP operand; if (!isKw("when") && !isKw("end")) operand = expr();
+                if (!isKw("when")) fail("Expected WHEN", cur());
+                while (acceptKw("when")) {
+                    ExprP c = expr(); expectKw("then"); ExprP v = expr();
+                    if (operand) c = bin("=", operand->clone(), std::move(c));   // simple CASE: CASE x WHEN a  ==  CASE WHEN x = a
+                    e->args.push_back(std::move(c)); e->args.push_back(std::move(v));
+                }
+                if (acceptKw("else")) { e->op = "ELSE"; e->args.push_back(expr()); }
+                SourceLoc en = cur().loc; expectKw("end"); span(*e, loc, en); return e;
+            }
             if (t.text == "true" || t.text == "false") { auto e = mk(Expr::Lit, "", loc); e->lit = SVal::Int(t.text == "true"); ++p_; return e; }
             if (reserved().count(t.text)) fail("Expected an expression", t);
             std::string name = t.text; ++p_;

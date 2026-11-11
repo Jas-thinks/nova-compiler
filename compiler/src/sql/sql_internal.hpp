@@ -40,8 +40,8 @@ struct RowLess { bool operator()(const Row& a, const Row& b) const; };
 struct Expr;
 using ExprP = std::unique_ptr<Expr>;
 struct Expr {
-    enum Kind { Lit, Col, Un, Bin, Func, Agg, Star, IsNull, Like, In, Between } kind = Lit;
-    std::string op;               // Bin: + - * / % || = <> < <= > >= AND OR | Un: - NOT | IsNull: "IS NULL"/"IS NOT NULL" | Like/In/Between: with optional NOT prefix
+    enum Kind { Lit, Col, Un, Bin, Func, Agg, Star, IsNull, Like, In, Between, Case } kind = Lit;
+    std::string op;               // Case: "ELSE" when an ELSE branch is present (args = c1, v1, c2, v2, ..., [else]) | Bin: + - * / % || = <> < <= > >= AND OR | Un: - NOT | IsNull: "IS NULL"/"IS NOT NULL" | Like/In/Between: with optional NOT prefix
     SVal lit;
     std::string table, name;      // Col (lower-case); Func/Agg name (upper-case)
     std::vector<ExprP> args;
@@ -124,7 +124,7 @@ struct OptStep { std::string rule, description, before, after; };
 
 // ------------------------------------------------------------------ expression bytecode (SQL-VM)
 enum class SOp { PUSH, LOAD, ADD, SUB, MUL, DIV, MOD, NEG, NOT, CAT, EQ, NE, LT, LE, GT, GE, AND, OR, ISNULL, NOTNULL, LIKE,
-                 UPPER, LOWER, LENGTH, ABS, COALESCE };
+                 UPPER, LOWER, LENGTH, ABS, COALESCE, CASE };
 struct SInstr { SOp op; int a = 0; SVal k; };
 struct SCode { std::vector<SInstr> code; std::string source; std::vector<std::string> disasm() const; };
 SCode compileExpr(const Expr& e);

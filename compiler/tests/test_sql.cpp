@@ -131,3 +131,14 @@ TEST(sql, bytecodeIsReportedPerExpression) {
     CHECK(has(j, "\"bytecode\""));
     CHECK(has(j, "LOAD slot2") && has(j, "MUL") && has(j, "GE") && has(j, "LE") && has(j, "AND"));   // BETWEEN is desugared to >= AND <=
 }
+
+TEST(sql, caseExpressions) {
+    CHECK_EQ(lastRows(kSetup + "SELECT name, CASE WHEN age IS NULL THEN 'unknown' WHEN age < 30 THEN 'young' ELSE 'adult' END FROM users ORDER BY id;"),
+             std::string("[[\"ann\",\"adult\"],[\"bob\",\"young\"],[\"cy\",\"unknown\"],[\"dee\",\"adult\"]]"));
+    CHECK_EQ(lastRows(kSetup + "SELECT CASE city WHEN 'NYC' THEN 1 WHEN 'LA' THEN 2 END FROM users ORDER BY id;"), std::string("[[1],[2],[1],[null]]"));   // simple CASE, no ELSE -> NULL
+    CHECK_EQ(lastRows(kSetup + "SELECT SUM(CASE WHEN city = 'NYC' THEN 1 ELSE 0 END), SUM(CASE WHEN age > 26 THEN age END) FROM users;"), std::string("[[2,71]]"));   // conditional aggregation
+    CHECK_EQ(lastRows("SELECT CASE WHEN NULL THEN 1 ELSE 2 END, CASE WHEN 1 THEN 1.5 ELSE 2 END;"), std::string("[[2,1.5]]"));   // NULL condition is not true; branch types unify to FLOAT
+    CHECK(has(json(kSetup + "SELECT CASE WHEN age > 1 THEN 'a' ELSE 5 END FROM users;"), "CASE branches must have compatible types"));
+    CHECK(has(json(kSetup + "SELECT CASE WHEN name THEN 1 END FROM users;"), "CASE WHEN condition must be boolean"));
+    CHECK(has(json("SELECT CASE END;"), "Expected WHEN"));
+}

@@ -69,6 +69,12 @@ std::string Expr::text() const {
         case Like: return "(" + args[0]->text() + " " + op + " " + args[1]->text() + ")";
         case In: return "(" + args[0]->text() + " " + op + " (" + list(1) + "))";
         case Between: return "(" + args[0]->text() + " " + op + " " + args[1]->text() + " AND " + args[2]->text() + ")";
+        case Case: {
+            std::string s = "CASE"; size_t n = args.size() - (op == "ELSE" ? 1 : 0);
+            for (size_t k = 0; k + 1 < n + 1 && k + 1 < args.size() + 1 && k + 1 <= n; k += 2) s += " WHEN " + args[k]->text() + " THEN " + args[k + 1]->text();
+            if (op == "ELSE") s += " ELSE " + args.back()->text();
+            return s + " END";
+        }
     }
     return "?";
 }
@@ -133,6 +139,12 @@ void gen(SCode& c, const Expr& e) {
             if (e.name == "UPPER") emit(c, SOp::UPPER); else if (e.name == "LOWER") emit(c, SOp::LOWER); else if (e.name == "LENGTH") emit(c, SOp::LENGTH);
             else if (e.name == "ABS") emit(c, SOp::ABS); else emit(c, SOp::COALESCE, static_cast<int>(e.args.size()));
             break;
+        case Expr::Case: {   // all branches are evaluated eagerly: safe because expressions have no side effects and never raise errors
+            for (auto& a : e.args) gen(c, *a);
+            int whens = static_cast<int>((e.args.size() - (e.op == "ELSE" ? 1 : 0)) / 2);
+            emit(c, SOp::CASE, whens, SVal::Int(e.op == "ELSE"));
+            break;
+        }
         case Expr::Agg: case Expr::Star: emit(c, SOp::PUSH, 0, SVal()); break;   // replaced by slot references before compilation
     }
 }
@@ -220,6 +232,14 @@ SVal runCode(const SCode& c, const Row& row) {
             }
             case SOp::LENGTH: { SVal a = pop(); st.push_back(a.isNull() ? SVal::null() : SVal::Int(utf8Len(a.s))); break; }
             case SOp::ABS: { SVal a = pop(); st.push_back(a.t == ST::Int ? SVal::Int(a.i < 0 ? static_cast<int64_t>(0 - static_cast<uint64_t>(a.i)) : a.i) : a.t == ST::Float ? SVal::Float(std::fabs(a.f)) : SVal::null()); break; }
+            case SOp::CASE: {
+                SVal other = in.k.i ? pop() : SVal::null();
+                std::vector<std::pair<SVal, SVal>> arms(static_cast<size_t>(in.a));
+                for (int k = in.a - 1; k >= 0; --k) { SVal v = pop(), cnd = pop(); arms[static_cast<size_t>(k)] = {std::move(cnd), std::move(v)}; }
+                SVal r = other;
+                for (auto& a : arms) if (!a.first.isNull() && truthy(a.first)) { r = a.second; break; }
+                st.push_back(std::move(r)); break;
+            }
             case SOp::COALESCE: {
                 std::vector<SVal> args(static_cast<size_t>(in.a));
                 for (int k = in.a - 1; k >= 0; --k) args[static_cast<size_t>(k)] = pop();
@@ -235,13 +255,13 @@ SVal evalConst(const Expr& e) { return runCode(compileExpr(e), Row()); }
 
 std::vector<std::string> SCode::disasm() const {
     static const char* names[] = {"PUSH", "LOAD", "ADD", "SUB", "MUL", "DIV", "MOD", "NEG", "NOT", "CAT", "EQ", "NE", "LT", "LE", "GT", "GE", "AND", "OR",
-                                  "ISNULL", "NOTNULL", "LIKE", "UPPER", "LOWER", "LENGTH", "ABS", "COALESCE"};
+                                  "ISNULL", "NOTNULL", "LIKE", "UPPER", "LOWER", "LENGTH", "ABS", "COALESCE", "CASE"};
     std::vector<std::string> out;
     for (size_t k = 0; k < code.size(); ++k) {
         const SInstr& i = code[k];
         char buf[16]; std::snprintf(buf, sizeof buf, "%03zu  ", k);
         std::string s = std::string(buf) + names[static_cast<int>(i.op)];
-        if (i.op == SOp::PUSH) s += " " + i.k.text(); else if (i.op == SOp::LOAD) s += " slot" + std::to_string(i.a); else if (i.op == SOp::COALESCE) s += " " + std::to_string(i.a);
+        if (i.op == SOp::PUSH) s += " " + i.k.text(); else if (i.op == SOp::LOAD) s += " slot" + std::to_string(i.a); else if (i.op == SOp::COALESCE) s += " " + std::to_string(i.a); else if (i.op == SOp::CASE) s += " " + std::to_string(i.a) + " arm(s)" + (i.k.i ? " + ELSE" : "");
         out.push_back(s);
     }
     return out;

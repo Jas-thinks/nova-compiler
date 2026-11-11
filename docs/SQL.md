@@ -25,7 +25,7 @@ Run it: `novac sql < script.sql` (JSON report), `POST /api/sql`, the **SQL Compi
 
 ## Language
 `CREATE TABLE [IF NOT EXISTS]` (INT, FLOAT, TEXT; `PRIMARY KEY`, `NOT NULL`), `DROP TABLE [IF EXISTS]`, `INSERT … VALUES (…),(…)`, `UPDATE … SET … WHERE`, `DELETE FROM … WHERE`, and `SELECT [DISTINCT] … FROM t [alias] [, t | CROSS JOIN | [INNER] JOIN … ON | LEFT [OUTER] JOIN … ON] … WHERE … GROUP BY … HAVING … ORDER BY (expr | alias | ordinal) [ASC|DESC] … LIMIT n [OFFSET m]`.
-Expressions: `+ - * / %`, `||`, comparisons, `AND OR NOT`, `IS [NOT] NULL`, `[NOT] LIKE`, `[NOT] IN (…)`, `[NOT] BETWEEN`, `UPPER LOWER LENGTH ABS COALESCE`, aggregates `COUNT(*) COUNT SUM AVG MIN MAX`. Operator precedence follows SQLite.
+Expressions: `+ - * / %`, `||`, comparisons, `AND OR NOT`, `IS [NOT] NULL`, `[NOT] LIKE`, `[NOT] IN (…)`, `[NOT] BETWEEN`, `CASE WHEN … THEN … [ELSE …] END` (searched and simple forms), `UPPER LOWER LENGTH ABS COALESCE`, aggregates `COUNT(*) COUNT SUM AVG MIN MAX`. Operator precedence follows SQLite.
 
 ## Semantics (deliberately SQLite-compatible, then verified)
 * **Three-valued logic**: `NULL AND 0 = 0`, `NULL OR 1 = 1`, `NOT NULL = NULL`, `NULL = NULL` is NULL, and `x IN (…, NULL)` yields NULL when nothing matches. `WHERE` keeps only rows whose condition is TRUE.
@@ -46,4 +46,4 @@ Each rewrite is recorded with a description and the plan before/after, and shown
 * 9 C++ unit tests (`compiler/tests/test_sql.cpp`), 8 API tests (`backend/tests/test_sql.py`, which also runs 200 differential cases), 3 UI tests.
 
 ## Not implemented
-Subqueries, `UNION`, window functions, `CASE`, indexes (all scans are full scans; joins use hash or nested loop), transactions, persistence, multi-column hash keys, cost-based join ordering, `BOOL`/date types.
+Subqueries, `UNION`, window functions, indexes (all scans are full scans; joins use hash or nested loop), transactions, persistence, multi-column hash keys, cost-based join ordering, `BOOL`/date types.

@@ -80,6 +80,8 @@ class Gen:
             return f"LENGTH({self.text_expr(cols, d-1)})"
         if k == 8:
             return f"COALESCE({self.int_expr(cols, d-1)}, {self.int_expr(cols, d-1)})"
+        if k == 9 and d >= 2:
+            return f"(CASE WHEN {self.bool_expr(cols, d-1)} THEN {self.int_expr(cols, d-1)} WHEN {self.bool_expr(cols, d-1)} THEN {self.int_expr(cols, d-1)} ELSE {self.int_expr(cols, d-1)} END)"
         return c or self.ival()
 
     def float_expr(self, cols, d):
@@ -102,7 +104,9 @@ class Gen:
         c = self.col_of(cols, "TEXT")
         if d <= 0 or self.chance(0.4):
             return c if c and self.chance(0.7) else self.sval()
-        k = self.r.randint(0, 3)
+        k = self.r.randint(0, 4)
+        if k == 4:
+            return f"(CASE {self.int_expr(cols, d-1)} WHEN {self.ival()} THEN {self.text_expr(cols, d-1)} WHEN {self.ival()} THEN {self.sval()} END)"
         if k == 0:
             return f"({self.text_expr(cols, d-1)} || {self.text_expr(cols, d-1)})"
         if k == 1:
