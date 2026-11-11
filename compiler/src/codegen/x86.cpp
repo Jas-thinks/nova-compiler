@@ -1,7 +1,11 @@
-// x86-64 backend. Strategy: one 8-byte stack slot per IR local/temp, all values held as raw 64-bit patterns
-// (int, bool as 0/1, float as IEEE-754 bits). Internal calling convention: args pushed right-to-left, result in %rax.
+// x86-64 backend. Values are raw 64-bit patterns (int, bool as 0/1, float as IEEE-754 bits, heap objects as pointers).
+// Every IR local/temp has an 8-byte stack home; a linear-scan register allocator (Poletto & Sarkar) over liveness-based
+// intervals assigns the hottest-by-length non-float values to the callee-saved registers %rbx,%r12-%r15, spilling the
+// interval that ends furthest away when registers run out. Floats stay in their stack home (SysV has no callee-saved xmm).
+// Internal calling convention: args pushed right-to-left, result in %rax; callee-saved registers are saved/restored per function.
 // Semantics mirror nova/value.hpp: wrapping integer arithmetic, trapping /0 and %0, INT64_MIN / -1 == wrap, NaN-safe compares.
 #include "nova/x86.hpp"
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <sstream>
@@ -16,13 +20,112 @@ struct FnEmitter {
     std::map<std::string, int> slot;
     int uid = 0;
     std::vector<std::string>& pool;   // program-wide string-literal pool (emitted into .rodata)
+    std::map<std::string, const char*> reg;     // allocated variables -> callee-saved register
+    std::vector<const char*> usedRegs;           // registers this function must save/restore
+    bool allocate = true;
+    int regSaveBase = 0;                          // slot index where saved registers begin
+    int statSpilled = 0, statInRegs = 0;
 
     FnEmitter(const IRFunction& fn, size_t idx, std::vector<std::string>& p) : f(fn), index(idx), pool(p) {
         for (auto& l : f.locals) slot.emplace(l.name, static_cast<int>(slot.size()));
         for (auto& p : f.params) slot.emplace(p.first, static_cast<int>(slot.size()));
     }
 
-    std::string mem(const std::string& name) const { return std::to_string(-8 * (slot.at(name) + 1)) + "(%rbp)"; }
+    std::string mem(const std::string& name) const {
+        auto r = reg.find(name);
+        if (r != reg.end()) return r->second;
+        return std::to_string(-8 * (slot.at(name) + 1)) + "(%rbp)";
+    }
+
+    // ---- linear-scan register allocation ----
+    void allocateRegisters() {
+        static const char* kPool[] = {"%rbx", "%r12", "%r13", "%r14", "%r15"};
+        const auto& code = f.code;
+        const int n = static_cast<int>(code.size());
+        std::map<std::string, int> id; std::vector<std::string> names; std::vector<char> isFloat;
+        auto var = [&](const std::string& nm, Type t) {
+            auto it = id.find(nm);
+            if (it != id.end()) { if (t == Type::Float) isFloat[it->second] = 1; return it->second; }
+            id[nm] = static_cast<int>(names.size()); names.push_back(nm); isFloat.push_back(t == Type::Float); return id[nm];
+        };
+        for (auto& l : f.locals) var(l.name, l.type);
+        for (auto& p : f.params) var(p.first, p.second);
+        for (auto& i : code) {
+            if (i.dst.isName()) var(i.dst.name, i.dst.type);
+            i.forEachUse([&](const Operand& o) { var(o.name, o.type); });
+        }
+        const int nv = static_cast<int>(names.size());
+        if (nv == 0 || n == 0) return;
+        std::map<std::string, int> labelAt;
+        for (int k = 0; k < n; ++k) if (code[k].kind == IRInstr::Label) labelAt[code[k].target] = k;
+        auto succ = [&](int k, int out[2]) {
+            int c = 0; const IRInstr& i = code[k];
+            if (i.kind == IRInstr::Return) return 0;
+            if (i.kind == IRInstr::Jump) { out[c++] = labelAt.at(i.target); return c; }
+            if (i.kind == IRInstr::JumpIfFalse || i.kind == IRInstr::JumpIfTrue) out[c++] = labelAt.at(i.target);
+            if (k + 1 < n) out[c++] = k + 1;
+            return c;
+        };
+        using Bits = std::vector<char>;
+        std::vector<Bits> liveIn(n, Bits(nv, 0)), liveOut(n, Bits(nv, 0));
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (int k = n - 1; k >= 0; --k) {
+                int s[2]; int cnt = succ(k, s);
+                Bits out(nv, 0);
+                for (int q = 0; q < cnt; ++q) for (int v = 0; v < nv; ++v) if (liveIn[s[q]][v]) out[v] = 1;
+                Bits in = out;
+                if (code[k].dst.isName()) in[id[code[k].dst.name]] = 0;
+                code[k].forEachUse([&](const Operand& o) { in[id[o.name]] = 1; });
+                if (out != liveOut[k] || in != liveIn[k]) { liveOut[k] = std::move(out); liveIn[k] = std::move(in); changed = true; }
+            }
+        }
+        // one [start,end] interval per variable (no lifetime holes: simple and always correct)
+        std::vector<int> start(nv, 1 << 30), end(nv, -1);
+        auto touch = [&](int v, int k) { start[v] = std::min(start[v], k); end[v] = std::max(end[v], k); };
+        for (int k = 0; k < n; ++k) {
+            for (int v = 0; v < nv; ++v) { if (liveIn[k][v] || liveOut[k][v]) touch(v, k); }
+            if (code[k].dst.isName()) touch(id[code[k].dst.name], k);
+            code[k].forEachUse([&](const Operand& o) { touch(id[o.name], k); });
+        }
+        for (auto& p : f.params) touch(id[p.first], 0);      // parameters are defined on entry
+        std::vector<int> order;
+        for (int v = 0; v < nv; ++v) if (!isFloat[v] && end[v] >= 0) order.push_back(v);
+        std::sort(order.begin(), order.end(), [&](int a, int b) { return start[a] != start[b] ? start[a] < start[b] : a < b; });
+        std::vector<int> active;                    // variables currently holding a register, sorted by end
+        std::map<int, const char*> assigned;        // variable -> register
+        std::vector<const char*> freeRegs(kPool, kPool + 5);
+        for (int v : order) {
+            for (auto it = active.begin(); it != active.end();) {   // expire intervals that ended before this one starts
+                if (end[*it] < start[v]) { freeRegs.push_back(assigned[*it]); it = active.erase(it); } else ++it;
+            }
+            if (!freeRegs.empty()) { assigned[v] = freeRegs.back(); freeRegs.pop_back(); active.push_back(v); }
+            else {
+                int victim = *std::max_element(active.begin(), active.end(), [&](int a, int b) { return end[a] < end[b]; });
+                if (end[victim] > end[v]) { assigned[v] = assigned[victim]; assigned.erase(victim); active.erase(std::find(active.begin(), active.end(), victim)); active.push_back(v); }
+                // else: v itself is spilled (stays in its stack home)
+            }
+        }
+        for (auto& [v, r] : assigned) {
+            reg[names[v]] = r;
+            if (std::find(usedRegs.begin(), usedRegs.end(), r) == usedRegs.end()) usedRegs.push_back(r);
+        }
+        statInRegs = static_cast<int>(assigned.size());
+        statSpilled = static_cast<int>(order.size()) - statInRegs;
+    }
+    void epilogue() {   // restore callee-saved registers, then return
+        for (size_t j = 0; j < usedRegs.size(); ++j) ins("movq " + std::to_string(-8 * (regSaveBase + static_cast<int>(j) + 1)) + "(%rbp), " + usedRegs[j]);
+        ins("leave"); ins("ret");
+    }
+    // Operand usable directly as an instruction source (register, stack home or 32-bit immediate); empty if it must be loaded.
+    std::string src(const Operand& x) const {
+        if (x.isConst()) {
+            if (x.type == Type::Str || x.type == Type::Float) return "";
+            int64_t v = static_cast<int64_t>(bitsOf(x.val));
+            return v >= INT32_MIN && v <= INT32_MAX ? "$" + std::to_string(v) : "";
+        }
+        return mem(x.name);
+    }
     std::string label(const std::string& l) const {
         std::string s = ".L" + std::to_string(index) + "_";
         for (char c : l) s += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
@@ -76,7 +179,25 @@ struct FnEmitter {
             ins("movq %xmm0, %rax"); st(i.dst, "%rax");
             return;
         }
-        ld(a, "%rax"); ld(b, "%rcx");
+        ld(a, "%rax");
+        std::string sb = src(b);
+        bool direct = !sb.empty() && (i.bop == BinOp::Add || i.bop == BinOp::Sub || i.bop == BinOp::Lt || i.bop == BinOp::Le || i.bop == BinOp::Gt ||
+                                      i.bop == BinOp::Ge || i.bop == BinOp::Eq || i.bop == BinOp::Ne || (i.bop == BinOp::Mul && sb[0] != '$'));
+        if (direct) {
+            switch (i.bop) {
+                case BinOp::Add: ins("addq " + sb + ", %rax"); st(i.dst, "%rax"); return;
+                case BinOp::Sub: ins("subq " + sb + ", %rax"); st(i.dst, "%rax"); return;
+                case BinOp::Mul: ins("imulq " + sb + ", %rax"); st(i.dst, "%rax"); return;
+                default: break;
+            }
+            ins("cmpq " + sb + ", %rax");
+            switch (i.bop) {
+                case BinOp::Lt: setcc("l", i.dst); return; case BinOp::Le: setcc("le", i.dst); return;
+                case BinOp::Gt: setcc("g", i.dst); return; case BinOp::Ge: setcc("ge", i.dst); return;
+                case BinOp::Eq: setcc("e", i.dst); return; default: setcc("ne", i.dst); return;
+            }
+        }
+        ld(b, "%rcx");
         switch (i.bop) {
             case BinOp::Add: ins("addq %rcx, %rax"); break;
             case BinOp::Sub: ins("subq %rcx, %rax"); break;
@@ -120,9 +241,12 @@ struct FnEmitter {
     void emit() {
         std::string sym = "nova_fn_" + f.name;
         o << "    .globl " << sym << "\n    .type " << sym << ", @function\n" << sym << ":\n";
+        if (allocate) allocateRegisters();
+        regSaveBase = static_cast<int>(slot.size());
         ins("pushq %rbp"); ins("movq %rsp, %rbp");
-        int frame = static_cast<int>(slot.size()) * 8; frame = (frame + 15) & ~15;
+        int frame = (static_cast<int>(slot.size()) + static_cast<int>(usedRegs.size())) * 8; frame = (frame + 15) & ~15;
         if (frame) ins("subq $" + std::to_string(frame) + ", %rsp");
+        for (size_t j = 0; j < usedRegs.size(); ++j) ins(std::string("movq ") + usedRegs[j] + ", " + std::to_string(-8 * (regSaveBase + static_cast<int>(j) + 1)) + "(%rbp)");
         for (auto& kv : slot) ins("movq $0, " + mem(kv.first));
         for (size_t k = 0; k < f.params.size(); ++k) { ins("movq " + std::to_string(16 + 8 * k) + "(%rbp), %rax"); ins("movq %rax, " + mem(f.params[k].first)); }
         for (auto& i : f.code) {
@@ -156,24 +280,24 @@ struct FnEmitter {
                 }
                 case IRInstr::Return:
                     if (!i.a.isNone()) ld(i.a, "%rax");
-                    ins("leave"); ins("ret"); break;
+                    epilogue(); break;
                 case IRInstr::Print:
                     if (i.a.type == Type::Float) { ldf(i.a, "%xmm0", "%rax"); ins("call nova_rt_print_float"); }
                     else { ld(i.a, "%rdi"); ins(i.a.type == Type::Str ? "call nova_rt_print_str" : i.a.type == Type::Bool ? "call nova_rt_print_bool" : "call nova_rt_print_int"); }
                     break;
             }
         }
-        ins("xorl %eax, %eax"); ins("leave"); ins("ret");
+        ins("xorl %eax, %eax"); epilogue();
         o << "    .size " << sym << ", .-" << sym << "\n\n";
     }
 };
 } // namespace
 
-std::string generateX86(const IRProgram& ir) {
+std::string generateX86(const IRProgram& ir, bool registerAllocation) {
     std::ostringstream out;
     out << "    .text\n";
     std::vector<std::string> pool;
-    for (size_t k = 0; k < ir.functions.size(); ++k) { FnEmitter e(ir.functions[k], k, pool); e.emit(); out << e.o.str(); }
+    for (size_t k = 0; k < ir.functions.size(); ++k) { FnEmitter e(ir.functions[k], k, pool); e.allocate = registerAllocation; e.emit(); out << e.o.str(); }
     out << "    .section .rodata\n    .balign 8\n";                 // string objects: { int64 length; bytes }, same layout as heap strings
     for (size_t k = 0; k < pool.size(); ++k) {
         out << ".Lstr" << k << ":\n    .quad " << pool[k].size() << "\n";

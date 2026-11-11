@@ -57,7 +57,7 @@ int runCli(int argc, char** argv) {
             std::string src((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
             auto r = compileSource(src, co);
             if (!r->success) { for (auto& d : r->diagnostics.items()) std::cerr << d.message << "\n"; return 1; }
-            std::cout << generateX86(optValue(args, "passes", "all") == "none" ? r->ir : r->opt.program);
+            std::cout << generateX86(optValue(args, "passes", "all") == "none" ? r->ir : r->opt.program, !hasFlag(args, "no-regalloc"));
             return 0;
         }
         if (cmd == "grammar") { std::cout << novaTable().tablesJson().dump() << "\n"; return 0; }

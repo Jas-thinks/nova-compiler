@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Wall-clock benchmark: NOVA native (x86-64) vs CPython. Usage: scripts/bench.sh
+# Wall-clock benchmark (best of 5): NOVA native without / with the linear-scan register allocator vs CPython. Usage: scripts/bench.sh
 set -euo pipefail
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; novac="$here/compiler/build/novac"; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-t() { local s=$(date +%s.%N); "$@" > /dev/null; printf "%.2f" "$(echo "$(date +%s.%N) - $s" | bc)"; }
-printf "%-10s %10s %10s %9s\n" benchmark native_s cpython_s speedup
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+best() { local b=999999; for _ in 1 2 3 4 5; do local s=$(date +%s%N); "$@" > /dev/null; local e=$(( ($(date +%s%N) - s) / 1000000 )); [ "$e" -lt "$b" ] && b=$e; done; echo "$b"; }
+printf "%-10s %12s %12s %12s %10s %10s\n" benchmark noregalloc_ms regalloc_ms cpython_ms vs_noreg vs_cpython
 for b in fib35 primes; do
-  "$here/scripts/nova-native.sh" "$here/benchmarks/$b.nova" -o "$tmp/$b"
-  nat=$(t "$tmp/$b")
-  py=$(t python3 "$here/benchmarks/$b.py")
-  [ "$("$tmp/$b")" == "$(python3 "$here/benchmarks/$b.py")" ] || { echo "OUTPUT MISMATCH $b" >&2; exit 1; }
-  printf "%-10s %10s %10s %8sx\n" "$b" "$nat" "$py" "$(echo "scale=1; $py / $nat" | bc)"
+  "$here/scripts/nova-native.sh" "$here/benchmarks/$b.nova" -o "$tmp/$b.noreg" --no-regalloc
+  "$here/scripts/nova-native.sh" "$here/benchmarks/$b.nova" -o "$tmp/$b.reg"
+  [ "$("$tmp/$b.reg")" == "$(python3 "$here/benchmarks/$b.py")" ] && [ "$("$tmp/$b.noreg")" == "$("$tmp/$b.reg")" ] || { echo "OUTPUT MISMATCH $b" >&2; exit 1; }
+  n=$(best "$tmp/$b.noreg"); r=$(best "$tmp/$b.reg"); p=$(best python3 "$here/benchmarks/$b.py")
+  printf "%-10s %12s %12s %12s %9sx %9sx\n" "$b" "$n" "$r" "$p" "$(echo "scale=2; $n / $r" | bc)" "$(echo "scale=1; $p / $r" | bc)"
 done

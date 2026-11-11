@@ -5,5 +5,5 @@
 
 namespace nova {
 // Emits assembly for the whole program. NOVA function f becomes the symbol nova_fn_f; runtime/nova_rt.c supplies main().
-std::string generateX86(const IRProgram& ir);
+std::string generateX86(const IRProgram& ir, bool registerAllocation = true);
 }
