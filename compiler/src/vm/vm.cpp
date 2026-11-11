@@ -27,9 +27,14 @@ VMResult runVM(const BcProgram& prog, const VMOptions& opt) {
     int ip = 0;
     std::string lastEvent = "program start";
 
+    // Each snapshot copies the whole call stack, so deep recursion could need gigabytes: budget the total number of
+    // recorded frames (the terminal snapshot is always kept so the failing state stays inspectable).
+    constexpr size_t kTraceFrameBudget = 300000;
+    size_t recordedFrames = 0;
     auto snap = [&](bool terminal) {
         if (!opt.trace) return;
-        if (res.trace.size() >= opt.maxTrace) { res.traceTruncated = true; return; }
+        if (!terminal && (res.trace.size() >= opt.maxTrace || recordedFrames > kTraceFrameBudget)) { res.traceTruncated = true; return; }
+        recordedFrames += frames.size();
         Snapshot s; s.step = res.steps; s.ip = ip; s.outputCount = res.output.size(); s.event = lastEvent; s.terminal = terminal;
         for (size_t k = 1; k < frames.size(); ++k) s.frames.push_back({frames[k].func, frames[k].callLine, frames[k].locals, frames[k].stack});
         res.trace.push_back(std::move(s));

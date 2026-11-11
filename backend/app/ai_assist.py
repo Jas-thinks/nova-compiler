@@ -97,3 +97,80 @@ def debug_runtime(source: str, complete: Callable[..., str] | None = None, tail:
         f"Program:\n```nova\n{source}\n```\n\nRecorded failure:\n{json.dumps(context, indent=1)}\n"
     )
     return {"status": "runtime_error", "error": err, "evidence": steps, "analysis": complete(prompt, system=SYSTEM)}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Rule-based runtime failure analysis (no LLM needed): evidence comes from the VM's recorded trace, reasoning is a fixed
+# set of rules per trap kind. The LLM variant above is optional and only adds free-form explanation.
+# ---------------------------------------------------------------------------------------------------------------------
+def explain_runtime(source: str) -> dict:
+    res = cc.compile_source(source, run=True, trace=True, target="baseline")
+    if not res.get("success"):
+        return {"status": "compile_error", "diagnostics": res.get("diagnostics", []), "mode": "rules"}
+    ex = (res.get("execution") or {}).get("baseline") or {}
+    err = ex.get("error")
+    if not err:
+        return {"status": "no_runtime_error", "output": ex.get("output", []), "steps": ex.get("steps"), "mode": "rules"}
+    lines = source.split("\n")
+    ln = int(err.get("line") or 0)
+    text = lines[ln - 1] if 0 < ln <= len(lines) else ""
+    trace = ex.get("trace") or []
+    funcs = (res.get("bytecode") or {}).get("baseline", {}).get("functions", [])
+    final = (trace[-1]["frames"] if trace else [])
+    variables: dict[str, str] = {}
+    fname = "main"
+    if final:
+        fr = final[-1]
+        if 0 <= fr["fn"] < len(funcs):
+            f = funcs[fr["fn"]]
+            fname = f["name"]
+            for n, v, tmp in zip(f["slotNames"], fr["locals"], f["slotIsTemp"]):
+                if not tmp:
+                    variables[n] = v
+    msg = err["message"]
+    notes: list[str] = []
+    fixes: list[str] = []
+    if "division by zero" in msg or "modulo by zero" in msg:
+        m = re.search(r"[/%]\s*([A-Za-z_]\w*|\(.*?\)|\d+)", text)
+        div = m.group(1) if m else None
+        zeros = [n for n, v in variables.items() if v == "0"]
+        if div and div in variables:
+            notes.append(f"The divisor `{div}` is {variables[div]} when line {ln} runs (`{text.strip()}`).")
+            fixes.append(f"Guard the operation: `if ({div} != 0) {{ … }}` or handle the zero case explicitly before dividing.")
+        elif zeros:
+            notes.append(f"Variables equal to 0 at the failure: {', '.join('`'+z+'`' for z in zeros)} — one of them is the divisor in `{text.strip()}`.")
+            fixes.append("Check the divisor is non-zero before dividing.")
+        else:
+            notes.append(f"The divisor evaluates to 0 in `{text.strip()}` (it is computed from an expression, not a plain variable).")
+            fixes.append("Check the divisor expression is non-zero before dividing.")
+    elif "index out of bounds" in msg:
+        m = re.search(r"([A-Za-z_]\w*)\s*\[\s*([^\]]+?)\s*\]", text)
+        if m:
+            arr, idx = m.groups()
+            val = variables.get(idx.strip())
+            notes.append(f"`{arr}[{idx}]` accessed an element outside the array" + (f" (`{idx}` = {val})." if val is not None else "."))
+            fixes.append(f"Check the index first: `if ({idx} >= 0 && {idx} < len({arr})) {{ … }}`. Valid indices are 0 … len({arr}) - 1.")
+        else:
+            notes.append(f"An array access on line {ln} used an index outside 0 … len-1.")
+            fixes.append("Bounds-check the index with len(array).")
+    elif "negative array size" in msg:
+        m = re.search(r"new\s+\w+\s*\[\s*([^\]]+?)\s*\]", text)
+        v = variables.get(m.group(1).strip()) if m else None
+        notes.append("`new T[n]` was called with a negative size" + (f" (`{m.group(1)}` = {v})." if m and v is not None else "."))
+        fixes.append("Validate the size is >= 0 before allocating.")
+    elif "stack overflow" in msg:
+        notes.append(f"Call depth exceeded the limit while running `{fname}` — the recursion never reaches a base case for these arguments." if fname else "Call depth exceeded the limit.")
+        shown = ", ".join(f"{k}={v}" for k, v in list(variables.items())[:4])
+        if shown:
+            notes.append(f"Arguments/locals in the deepest frame: {shown}.")
+        fixes.append("Add or fix the base case (e.g. `if (n <= 0) { return … }`) and make sure the argument moves toward it on every call.")
+    elif "step limit" in msg:
+        notes.append("The program executed too many instructions — most likely an infinite loop.")
+        if variables:
+            notes.append("Variables when it was stopped: " + ", ".join(f"{k}={v}" for k, v in list(variables.items())[:6]) + ".")
+        fixes.append("Check the loop condition changes: every iteration must update a variable that the condition tests.")
+    else:
+        notes.append(f"Runtime trap: {msg}.")
+    return {"status": "runtime_error", "mode": "rules", "error": err, "function": fname, "sourceLine": text.strip(),
+            "variables": variables, "analysis": notes, "suggestions": fixes, "output": ex.get("output", []),
+            "evidence": [f"step {t['step']}: {t['event']}" for t in trace[-6:]]}

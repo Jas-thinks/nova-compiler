@@ -11,6 +11,7 @@ import sys
 from typing import Any, BinaryIO
 
 from . import compiler_client as cc
+from . import quickfix
 
 KEYWORDS = ["fn", "let", "if", "else", "while", "return", "print", "new", "true", "false"]
 TYPES = ["int", "float", "bool", "string"]
@@ -129,6 +130,7 @@ class NovaLanguageServer:
                 "definitionProvider": True,
                 "referencesProvider": True,
                 "documentSymbolProvider": True,
+                "codeActionProvider": {"codeActionKinds": ["quickfix"]},
                 "completionProvider": {"triggerCharacters": []},
             },
             "serverInfo": {"name": "nova-lsp", "version": "0.1"},
@@ -246,6 +248,26 @@ class NovaLanguageServer:
             r = _range(f["loc"])
             out.append({"name": f["name"], "detail": signature(f), "kind": KIND_FUNCTION, "range": r, "selectionRange": r})
         return out
+
+    def _m_textDocument_codeAction(self, p):
+        """Compiler diagnostics -> quick fixes (the same rule engine as /api/suggest)."""
+        d = self._doc(p)
+        if not d:
+            return []
+        rng = p["range"]
+        lo, hi = (rng["start"]["line"], rng["start"]["character"]), (rng["end"]["line"], rng["end"]["character"])
+        actions = []
+        for diag in d.result.get("diagnostics", []):
+            r = _range(diag["loc"])
+            s, e = (r["start"]["line"], r["start"]["character"]), (r["end"]["line"], r["end"]["character"])
+            if not (s <= hi and lo <= max(e, s)):
+                continue
+            for f in quickfix.fixes_for(d.text, diag):
+                edits = [{"range": _range({"line": x["range"]["line"], "col": x["range"]["col"], "endLine": x["range"]["endLine"], "endCol": x["range"]["endCol"]}), "newText": x["newText"]} for x in f["edits"]]
+                actions.append({"title": f["title"], "kind": "quickfix", "isPreferred": f["kind"] == "quickfix",
+                                "diagnostics": [{"range": r, "message": diag["message"], "code": diag["code"], "severity": SEV.get(diag["severity"], 1)}],
+                                "edit": {"changes": {p["textDocument"]["uri"]: edits}}})
+        return actions
 
     def _m_textDocument_completion(self, p):
         d = self._doc(p)

@@ -1,0 +1,12 @@
+fn sq(x: int) -> int { return x * x; }
+fn mix(a: int, b: int) -> int { return sq(a % 1000) + b * 7; }
+fn clamp(x: int, hi: int) -> int { if (x > hi) { return hi; } return x; }
+fn main() {
+    let i: int = 0;
+    let acc: int = 0;
+    while (i < 20000000) {
+        acc = clamp(acc + mix(i, acc), 1000000007);
+        i = i + 1;
+    }
+    print(acc);
+}

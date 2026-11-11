@@ -753,3 +753,15 @@ TEST(inlining, canBeDisabledAndInliningAloneIsSound) {
     auto r = build(src, only);
     CHECK(countHist(r->opt, "inlining") == 1 && joinOut(r->runOptimized.output) == "36\n");
 }
+
+TEST(vm, deepRecursionTraceStaysWithinMemoryBudgetAndKeepsTerminalSnapshot) {
+    CompileOptions co; co.run = true; co.trace = true; co.traceTarget = "baseline"; co.maxTrace = 100000;
+    auto r = compileSource("fn f(n: int) -> int { return f(n + 1) + 1; }\nfn main() { print(f(0)); }\n", co);
+    CHECK(r->success);
+    CHECK(!r->runBaseline.ok);
+    CHECK(r->runBaseline.error.find("stack overflow") != std::string::npos);
+    CHECK(r->runBaseline.traceTruncated);                    // budget hit: the recorder stopped instead of exhausting memory
+    CHECK(!r->runBaseline.trace.empty() && r->runBaseline.trace.back().terminal);   // ... but the failing state is still recorded
+    size_t frames = 0; for (auto& s : r->runBaseline.trace) frames += s.frames.size();
+    CHECK(frames < 400000);
+}

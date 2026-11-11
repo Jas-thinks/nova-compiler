@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 import time
 
 from . import compiler_client as cc
-from . import ai_assist, config, explorer, llm
+from . import ai_assist, config, explorer, llm, quickfix
 from .sandbox import limits_available
 from .debug_sessions import store
 from .examples import load_examples
@@ -305,6 +305,24 @@ def _ai_call(fn, req: SourceRequest):
         raise
     except Exception as exc:  # API/network failure must never break compilation
         return {"available": True, "status": "ai_error", "note": f"AI service failed: {exc}"}
+
+
+@app.post("/api/suggest")
+def suggest(req: SourceRequest):
+    """Compiler-verified quick fixes for the current diagnostics (no API key needed)."""
+    return quickfix.suggest(req.source)
+
+
+@app.post("/api/autofix")
+def autofix(req: SourceRequest):
+    """Iteratively apply verified fixes until the program compiles; returns the steps and a diff."""
+    return quickfix.autofix(req.source)
+
+
+@app.post("/api/debug/explain")
+def debug_explain(req: SourceRequest):
+    """Rule-based root-cause analysis of a runtime trap from the VM's recorded trace (no API key needed)."""
+    return ai_assist.explain_runtime(req.source)
 
 
 @app.post("/api/ai/fix")
