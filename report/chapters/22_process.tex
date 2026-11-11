@@ -32,7 +32,7 @@ Commit messages describe \emph{what and why}; large changes were committed only 
 \begin{itemize}
   \item \textbf{One command, all checks.} \code{scripts/test.sh} builds the compiler, runs the C++ tests, the 1000-program fuzz, native-versus-VM, SQL-versus-SQLite, the backend tests and the frontend type-check and tests, and fails if any step fails.
   \item \textbf{Sanitizers} in a second script (\code{scripts/sanitize.sh}).
-  \item \textbf{Continuous integration.} A GitHub Actions workflow (\code{.github/workflows/ci.yml}) runs the full suite and the sanitizer job on every push. It is configured and committed, but, as the project has not been pushed to a hosted repository, it has \emph{not yet run} on GitHub.
+  \item \textbf{Continuous integration.} A GitHub Actions workflow (\code{.github/workflows/ci.yml}) runs the full suite and the sanitizer job on every push. It has run on GitHub: the \emph{first} run failed in both jobs --- a genuine portability bug (a test file used \code{std::sort} without including \code{<algorithm>}; it compiled locally through a transitive include that the hosted compiler does not provide) --- and after the one-line fix and an audit of the other sources, both the test job and the sanitizer job \textbf{passed}. A hosted CI run catches exactly this class of environment-dependent defect.
 \end{itemize}
 
 \section{Documentation}

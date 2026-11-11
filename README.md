@@ -47,6 +47,8 @@ CLI: `novac compile --run < prog.nova | jq .execution` · `scripts/nova-native.s
 | NOVA-SQL vs SQLite | 4910/4910 random queries agree (earlier run), 2460/2460 after adding `CASE`; 0 failures |
 
 ## Test status (last full run)
+**CI: green on GitHub Actions** (test job + ASan/UBSan job). Its first run failed on a real portability bug — a missing `#include <algorithm>` that only the hosted compiler exposed — fixed in the next commit.
+
 **184** C++ unit tests · **73** backend tests · **32** frontend tests · 1000/1000 random programs identical across 3 engines · 313/313 native-vs-VM programs identical · SQL differential 0 failures · sanitizers: 0 findings, 0 crashes on 600 garbled SQL scripts + 600 mutated NOVA programs.
 
 ## Architecture

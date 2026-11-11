@@ -12,7 +12,7 @@ Optimizer & Passes are intra-procedural except inlining; no loop optimizations (
 Native back end & Floats are not register-allocated; one live interval per variable; no peephole optimizer or compare-and-branch fusion; x86-64 Linux only; relies on \code{gcc} to assemble and link.\\
 NOVA-SQL & No subqueries, \code{UNION}, window functions, indexes, transactions or persistence; rule-based (no cost model, no join reordering); single-column hash keys; first error per statement.\\
 Assistant & Rules cover common diagnostics only; the LLM path was exercised only with a scripted model (no real API key in the test environment).\\
-Tooling & The VS Code client has never run in a real VS Code session; CI has never run on a hosted service; the sandbox has no container-level isolation.\\
+Tooling & The VS Code client has never run in a real VS Code session; CI has run only on the hosted Linux runner (one compiler version); the sandbox has no container-level isolation.\\
 Evidence & Differential testing shows agreement on generated inputs, not a proof; reference interpreter and compiler share the front end; all benchmarks are single-machine measurements.\\ \bottomrule
 \end{tabularx}
 \caption{Known limitations, stated plainly.}
@@ -27,7 +27,7 @@ Evidence & Differential testing shows agreement on generated inputs, not a proof
   \item \textbf{Cost-driven inlining}: use call-frequency estimates from a profile run.
   \item \textbf{NOVA-SQL}: subqueries (decorrelation), indexes, statistics, join ordering by dynamic programming, window functions.
   \item \textbf{Assistant}: evaluate real-model fix rates on a corpus of broken programs; add fixes for wrong argument counts using the callee's signature.
-  \item \textbf{Hardening}: run the service in containers with seccomp; run CI on a hosted service; test the VS Code client.
+  \item \textbf{Hardening}: run the service in containers with seccomp; extend CI to a compiler matrix (gcc and clang) and macOS; test the VS Code client.
   \item \textbf{Formal checking}: translation validation of individual optimization passes.
 \end{enumerate}
 
