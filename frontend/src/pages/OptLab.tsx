@@ -8,6 +8,7 @@ import { PASS_IDS, PASS_TITLES, pct } from '../lib/format'
 import type { IRFunction, OptimizeResponse } from '../types/api'
 
 const DESCRIPTIONS: Record<string, string> = {
+  inlining: 'Replaces a call to a small, non-recursive function by a renamed copy of its body (parameters become copies of the arguments, return becomes an assignment and a jump). Removes call overhead and lets constant propagation, CSE and DCE work across the former call boundary.',
   constant_propagation: 'Replaces variables that are known constants (or plain copies of another name) with that value. Block-local dataflow plus function-wide facts for variables assigned exactly once.',
   constant_folding: 'Evaluates operations whose operands are all constants at compile time, and turns branches on constant conditions into jumps or deletes them. Integer division by zero is never folded.',
   algebraic: 'Identities such as x+0, x*1, x*0, x-x, x%1 and strength reduction x*2 → x+x. Float rules are restricted so IEEE semantics (−0.0, NaN) are preserved.',

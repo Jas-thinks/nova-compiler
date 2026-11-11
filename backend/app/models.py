@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import config
 
-PASS_IDS = {"constant_folding", "constant_propagation", "algebraic", "cse", "unreachable", "dce"}
+PASS_IDS = {"inlining", "constant_folding", "constant_propagation", "algebraic", "cse", "unreachable", "dce"}
 
 
 class _SourceRequest(BaseModel):

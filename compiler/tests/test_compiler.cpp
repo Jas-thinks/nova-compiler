@@ -716,3 +716,40 @@ TEST(heap, stringOperationsSurviveOptimization) {
     CHECK_EQ(runOut(src), std::string("false\ntrue\ntrue\n"));
     CHECK_EQ(runOut(src, OptConfig::none()), std::string("false\ntrue\ntrue\n"));
 }
+
+// ------------------------------------------------------------------ inlining
+TEST(inlining, smallNonRecursiveCalleesAreInlinedAndBehaviourIsPreserved) {
+    std::string src = "fn sq(x: int) -> int { return x * x; }\nfn hyp(a: int, b: int) -> int { return sq(a) + sq(b); }\n"
+                      "fn main() { print(hyp(3, 4)); let i: int = 0; let s: int = 0; while (i < 5) { s = s + sq(i); i = i + 1; } print(s); }\n";
+    auto r = build(src);
+    CHECK(r->success);
+    CHECK_EQ(joinOut(r->runOptimized.output), std::string("25\n30\n"));
+    CHECK(r->runOptimized.output == r->runBaseline.output);
+    CHECK(r->runOptimized.output == r->reference.output);
+    CHECK(countHist(r->opt, "inlining") >= 3);
+    int calls = 0; for (auto& f : r->opt.program.functions) if (f.name == "main") for (auto& i : f.code) if (i.kind == IRInstr::Call) ++calls;
+    CHECK_EQ(calls, 0);                                                // every call in main disappeared (hyp and sq were inlined transitively)
+    CHECK(r->runOptimized.steps < r->runBaseline.steps);
+}
+TEST(inlining, recursiveAndMainAreNeverInlined) {
+    std::string src = "fn fib(n: int) -> int { if (n < 2) { return n; } return fib(n - 1) + fib(n - 2); }\nfn main() { print(fib(10)); }\n";
+    auto r = build(src);
+    CHECK_EQ(countHist(r->opt, "inlining"), size_t(0));
+    CHECK_EQ(joinOut(r->runOptimized.output), std::string("55\n"));
+}
+TEST(inlining, voidCalleesParametersAndEarlyReturns) {
+    std::string src = "fn clamp(x: int, lo: int, hi: int) -> int { if (x < lo) { return lo; } if (x > hi) { return hi; } return x; }\n"
+                      "fn show(v: int) { if (v < 0) { return; } print(v); }\n"
+                      "fn main() { show(clamp(15, 0, 10)); show(clamp(-4, 0, 10)); show(clamp(7, 0, 10)); let a: int = clamp(1, 5, 9); print(a); }\n";
+    auto r = build(src);
+    CHECK_EQ(joinOut(r->runOptimized.output), std::string("10\n0\n7\n5\n"));
+    CHECK(r->runOptimized.output == r->reference.output);
+    CHECK(countHist(r->opt, "inlining") >= 4);
+}
+TEST(inlining, canBeDisabledAndInliningAloneIsSound) {
+    std::string src = "fn sq(x: int) -> int { return x * x; }\nfn main() { print(sq(6)); }\n";
+    CHECK_EQ(countHist(build(src, OptConfig::none())->opt, "inlining"), size_t(0));
+    OptConfig only = OptConfig::none(); only.inlining = true;
+    auto r = build(src, only);
+    CHECK(countHist(r->opt, "inlining") == 1 && joinOut(r->runOptimized.output) == "36\n");
+}

@@ -1,4 +1,4 @@
-// IR optimizer: constant folding/propagation, algebraic simplification, CSE,
+// IR optimizer: function inlining, constant folding/propagation, algebraic simplification, CSE,
 // unreachable-code elimination and liveness-based dead-code elimination.
 #pragma once
 #include <map>
@@ -9,6 +9,7 @@
 namespace nova {
 
 struct OptConfig {
+    bool inlining = true;              // interprocedural: inline small non-recursive callees (runs before the intra-procedural passes)
     bool constantFolding = true;
     bool constantPropagation = true;   // also performs copy propagation
     bool algebraic = true;
@@ -16,8 +17,8 @@ struct OptConfig {
     bool unreachable = true;
     bool dce = true;
     int maxRounds = 12;
-    static OptConfig none() { OptConfig c; c.constantFolding = c.constantPropagation = c.algebraic = c.cse = c.unreachable = c.dce = false; return c; }
-    bool any() const { return constantFolding || constantPropagation || algebraic || cse || unreachable || dce; }
+    static OptConfig none() { OptConfig c; c.inlining = c.constantFolding = c.constantPropagation = c.algebraic = c.cse = c.unreachable = c.dce = false; return c; }
+    bool any() const { return inlining || constantFolding || constantPropagation || algebraic || cse || unreachable || dce; }
     // Parse a comma-separated list of pass ids, or "all" / "none".
     static bool parse(const std::string& list, OptConfig& out, std::string& error);
     Json toJson() const;

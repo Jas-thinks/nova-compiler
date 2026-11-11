@@ -1,6 +1,7 @@
 import type { Diagnostic, Loc } from '../types/api'
 
 export const PASS_TITLES: Record<string, string> = {
+  inlining: 'Function inlining',
   constant_propagation: 'Constant & copy propagation',
   constant_folding: 'Constant folding',
   algebraic: 'Algebraic simplification',

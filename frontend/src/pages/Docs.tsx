@@ -64,6 +64,7 @@ export default function Docs() {
 
       {tab === 'Optimizations' && (
         <div className="grid gap-2">{PASS_IDS.map((p) => <Panel key={p} title={PASS_TITLES[p]} bodyClass="p-3 text-fg-dim">{{
+          inlining: 'Interprocedural: replaces calls to small non-recursive functions (checked on the call graph) by a renamed copy of their body, then lets the other passes optimize across the old call boundary.',
           constant_propagation: 'Substitutes known constants and copies for variable uses (block-local, plus single-assignment constants function-wide).',
           constant_folding: 'Evaluates constant expressions and constant branches at compile time. Never folds integer division by zero.',
           algebraic: 'x+0, x*1, x*0, x-x, x%1, x/1, x*2→x+x, reflexive comparisons on ints. Float identities restricted to IEEE-safe ones.',

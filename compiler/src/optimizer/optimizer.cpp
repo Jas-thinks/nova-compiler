@@ -8,6 +8,7 @@ namespace nova {
 
 const std::vector<std::pair<std::string, std::string>>& optimizationPasses() {
     static const std::vector<std::pair<std::string, std::string>> p = {
+        {"inlining", "Function inlining"},
         {"constant_propagation", "Constant & copy propagation"},
         {"constant_folding", "Constant folding"},
         {"algebraic", "Algebraic simplification"},
@@ -24,7 +25,8 @@ bool OptConfig::parse(const std::string& list, OptConfig& out, std::string& erro
     if (list == "none" || list.empty()) return true;
     std::stringstream ss(list); std::string item;
     while (std::getline(ss, item, ',')) {
-        if (item == "constant_folding") out.constantFolding = true;
+        if (item == "inlining") out.inlining = true;
+        else if (item == "constant_folding") out.constantFolding = true;
         else if (item == "constant_propagation") out.constantPropagation = true;
         else if (item == "algebraic") out.algebraic = true;
         else if (item == "cse") out.cse = true;
@@ -37,7 +39,7 @@ bool OptConfig::parse(const std::string& list, OptConfig& out, std::string& erro
 
 Json OptConfig::toJson() const {
     Json j = Json::object();
-    j.set("constant_folding", constantFolding).set("constant_propagation", constantPropagation).set("algebraic", algebraic)
+    j.set("inlining", inlining).set("constant_folding", constantFolding).set("constant_propagation", constantPropagation).set("algebraic", algebraic)
      .set("cse", cse).set("unreachable", unreachable).set("dce", dce);
     return j;
 }
@@ -386,10 +388,91 @@ bool dce(Ctx& c) {
 
 } // namespace
 
+// ---------- interprocedural: function inlining ----------
+// A call is replaced by a renamed copy of the callee's body: parameters become copies of the arguments, `return v`
+// becomes `dst = v; goto end`. Only callees that are (transitively) non-recursive, small, and not `main` are inlined,
+// and every caller may grow by a bounded amount, so the pass always terminates and never blows up code size.
+namespace {
+constexpr size_t kInlineMaxCalleeSize = 30;
+constexpr size_t kInlineMaxCallerSize = 600;
+
+bool callsOther(const IRFunction& f) { for (auto& i : f.code) if (i.kind == IRInstr::Call && !isIntrinsic(i.callee)) return true; return false; }
+
+std::set<std::string> recursiveFunctions(const IRProgram& p) {
+    std::map<std::string, std::set<std::string>> edges;
+    for (auto& f : p.functions) for (auto& i : f.code) if (i.kind == IRInstr::Call && !isIntrinsic(i.callee)) edges[f.name].insert(i.callee);
+    std::set<std::string> rec;
+    for (auto& f : p.functions) {                       // f is recursive iff f is reachable from itself
+        std::set<std::string> seen; std::vector<std::string> work(edges[f.name].begin(), edges[f.name].end());
+        while (!work.empty()) {
+            std::string g = work.back(); work.pop_back();
+            if (g == f.name) { rec.insert(f.name); break; }
+            if (!seen.insert(g).second) continue;
+            for (auto& h : edges[g]) work.push_back(h);
+        }
+    }
+    return rec;
+}
+
+bool inlineProgram(IRProgram& prog, std::vector<OptRecord>& hist, int& site) {   // `site` is unique across rounds, so generated names never collide
+    bool any = false;
+    auto rec = recursiveFunctions(prog);
+    std::map<std::string, const IRFunction*> byName;
+    for (auto& f : prog.functions) byName[f.name] = &f;
+    std::map<std::string, IRFunction> snapshot;          // callee bodies as of the start of the round (stable while callers change)
+    for (auto& f : prog.functions) snapshot[f.name] = f;
+    for (auto& caller : prog.functions) {
+        std::vector<IRInstr> out;
+        for (auto& ins : caller.code) {
+            bool done = false;
+            if (ins.kind == IRInstr::Call && !isIntrinsic(ins.callee) && ins.callee != "main" && ins.callee != caller.name && !rec.count(ins.callee) &&
+                snapshot.count(ins.callee) && snapshot[ins.callee].code.size() <= kInlineMaxCalleeSize && out.size() + snapshot[ins.callee].code.size() < kInlineMaxCallerSize) {
+                const IRFunction& g = snapshot[ins.callee];
+                const std::string tag = "_i" + std::to_string(++site);   // alphanumeric: also a valid assembly label fragment
+                std::map<std::string, std::string> ren;
+                auto rn = [&](const std::string& n) { auto it = ren.find(n); if (it != ren.end()) return it->second; return ren[n] = g.name + tag + "." + n; };   // e.g. sq_i3.x
+                for (auto& l : g.locals) { caller.locals.push_back({rn(l.name), l.type, l.isTemp, false}); }
+                for (auto& p : g.params) rn(p.first);
+                auto op = [&](Operand o) { if (o.isName()) o.name = rn(o.name); return o; };
+                const std::string endLabel = "inl_end" + tag;
+                std::string before = ins.str();
+                for (size_t k = 0; k < g.params.size(); ++k) {          // bind parameters
+                    IRInstr c; c.kind = IRInstr::Copy; c.dst = Operand::var(rn(g.params[k].first), g.params[k].second); c.a = ins.args[k]; c.line = ins.line; c.col = ins.col; out.push_back(c);
+                }
+                for (auto& gi : g.code) {
+                    IRInstr n = gi; n.dst = op(gi.dst); n.a = op(gi.a); n.b = op(gi.b);
+                    for (auto& a : n.args) a = op(a);
+                    if (n.kind == IRInstr::Label || n.kind == IRInstr::Jump || n.kind == IRInstr::JumpIfFalse || n.kind == IRInstr::JumpIfTrue) n.target += tag;
+                    if (n.kind == IRInstr::Return) {
+                        if (ins.dst.isName() && !n.a.isNone()) { IRInstr c; c.kind = IRInstr::Copy; c.dst = ins.dst; c.a = n.a; c.line = gi.line; c.col = gi.col; out.push_back(c); }
+                        IRInstr j; j.kind = IRInstr::Jump; j.target = endLabel; j.line = gi.line; j.col = gi.col; out.push_back(j);
+                        continue;
+                    }
+                    out.push_back(n);
+                }
+                IRInstr e; e.kind = IRInstr::Label; e.target = endLabel; e.line = ins.line; e.col = ins.col; out.push_back(e);
+                OptRecord r; r.pass = "inlining"; r.function = caller.name; r.before = before;
+                r.after = "(" + std::to_string(g.code.size()) + " instructions of " + g.name + " inlined)";
+                r.explanation = "Call to '" + g.name + "' replaced by its body: parameters become copies of the arguments, 'return v' becomes 'dst = v; goto end'. This removes call/return overhead and exposes the body to constant propagation, CSE and DCE in the caller.";
+                r.line = ins.line; r.col = ins.col; r.round = 0;
+                hist.push_back(std::move(r));
+                done = any = true;
+            }
+            if (!done) out.push_back(ins);
+        }
+        caller.code = std::move(out);
+    }
+    (void)byName; (void)callsOther;
+    return any;
+}
+} // namespace
+
 OptResult optimize(const IRProgram& in, const OptConfig& cfg) {
     OptResult res;
     res.program = in;
     res.instructionsBefore = in.instructionCount();
+    int inlineSite = 0;
+    if (cfg.inlining) for (int round = 0; round < 3 && inlineProgram(res.program, res.history, inlineSite); ++round) {}
     for (auto& f : res.program.functions) {
         for (int round = 1; round <= cfg.maxRounds && cfg.any(); ++round) {
             Ctx c{&f, &res.history, round};
