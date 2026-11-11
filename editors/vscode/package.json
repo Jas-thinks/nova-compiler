@@ -1,0 +1,19 @@
+{
+  "name": "nova-lang",
+  "displayName": "NOVA Language",
+  "description": "Language support for NOVA via the nova-lsp server (diagnostics, hover, go to definition, references, completion).",
+  "version": "0.1.0",
+  "publisher": "nova",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:nova"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [{ "id": "nova", "extensions": [".nova"], "aliases": ["NOVA"], "configuration": "./language-configuration.json" }],
+    "configuration": {
+      "title": "NOVA",
+      "properties": { "nova.serverScript": { "type": "string", "default": "", "description": "Absolute path to scripts/nova-lsp.sh in the NOVA repository." } }
+    }
+  },
+  "dependencies": { "vscode-languageclient": "9.0.1" }
+}
