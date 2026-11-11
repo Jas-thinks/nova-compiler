@@ -497,7 +497,8 @@ TEST(vm2, executionIsDeterministicIncludingTraces) {
 TEST(vm2, traceIsCappedAndFlagged) {
     CompileOptions co; co.run = true; co.trace = true; co.maxTrace = 50;
     auto r = compileSource(wrapMain("let i: int = 0; while (i < 1000) { i = i + 1; }"), co);
-    CHECK_EQ(r->runOptimized.trace.size(), size_t(50));
+    CHECK_EQ(r->runOptimized.trace.size(), size_t(51));       // 50 recorded steps + the terminal snapshot, which is always kept
+    CHECK(r->runOptimized.trace.back().terminal);
     CHECK(r->runOptimized.traceTruncated);
 }
 TEST(vm2, outputLimitIsEnforced) {

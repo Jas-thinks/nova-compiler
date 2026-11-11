@@ -33,7 +33,7 @@ VMResult runVM(const BcProgram& prog, const VMOptions& opt) {
     size_t recordedFrames = 0;
     auto snap = [&](bool terminal) {
         if (!opt.trace) return;
-        if (!terminal && (res.trace.size() >= opt.maxTrace || recordedFrames > kTraceFrameBudget)) { res.traceTruncated = true; return; }
+        if (!terminal && (res.trace.size() >= opt.maxTrace || recordedFrames > kTraceFrameBudget)) { res.traceTruncated = true; return; }   // terminal snapshot bypasses both limits
         recordedFrames += frames.size();
         Snapshot s; s.step = res.steps; s.ip = ip; s.outputCount = res.output.size(); s.event = lastEvent; s.terminal = terminal;
         for (size_t k = 1; k < frames.size(); ++k) s.frames.push_back({frames[k].func, frames[k].callLine, frames[k].locals, frames[k].stack});
