@@ -11,6 +11,10 @@ import json,sys
 j=json.load(sys.stdin)
 print(f\"  programs={j['requested']} identical={j['passed']} mismatched={j['failed']} inconclusive={j['inconclusive']} generator_failures={j['generatorFailures']}\")
 sys.exit(1 if j['failed'] or j['generatorFailures'] else 0)" || FAIL=1
+if command -v gcc >/dev/null 2>&1; then
+  info "Native x86-64 backend vs VM (examples + 100 random programs)"
+  "$NOVA_ROOT/scripts/native_diff.sh" 100 || FAIL=1
+fi
 ensure_venv
 info "Backend tests (pytest)"
 (cd "$NOVA_ROOT/backend" && .venv/bin/python -m pytest -q tests) || FAIL=1

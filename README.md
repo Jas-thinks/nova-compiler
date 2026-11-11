@@ -28,7 +28,12 @@ Open the printed `http://localhost:5173`. If ports are busy: `NOVA_API_PORT=8765
 
 CLI without the website: `compiler/build/novac compile --run < examples/02_factorial.nova | jq .execution` (also `novac grammar|fuzz|gen|isa|passes`).
 
-## New in this release
+## New: native backend, verified AI assist, CI
+* **Native x86-64 backend** (`novac asm`, `scripts/nova-native.sh prog.nova -o prog`): IR → System V assembly → real executable via gcc, with a small C runtime (`compiler/runtime/nova_rt.c`) that traps `/0` and stack overflow like the VM. `scripts/native_diff.sh` checks native output == VM output on every example and N random programs (310/310 in the last run). `scripts/bench.sh`: fib(35) ≈ 8× and a prime sieve ≈ 12× faster than CPython on the author's machine. Simple codegen (one stack slot per value, **no register allocation yet**).
+* **AI fix + debug, verified by the compiler** (`POST /api/ai/fix`, `/api/ai/debug`, needs `ANTHROPIC_API_KEY`): the model proposes a corrected program; the C++ compiler re-compiles it and only a candidate that passes is returned (up to 3 retries fed with the new diagnostics). The debugger endpoint explains runtime failures from the VM's recorded trace. Tested offline with a scripted model (`backend/tests/test_ai_assist.py`). Frontend UI for these endpoints is not built yet.
+* **CI** (`.github/workflows/ci.yml`): full suite plus the ASan/UBSan build on every push.
+
+## New in the previous release
 **CFG & Data-flow page** (basic blocks, edges, dominators, loops, liveness and reaching-definitions with iteration history, pruned SSA with φ nodes) · **Compiler Explorer** (real gcc/clang compile-only viewer for C; other languages explicitly *not implemented*) · **live capability and test dashboard** · hardened subprocess sandbox (`backend/app/sandbox.py`: timeout, output cap, rlimits — *no* container isolation) · pass-impact table in the Optimization Lab. See [docs/ADVANCED_ANALYSIS.md](docs/ADVANCED_ANALYSIS.md), [docs/LANGUAGE_SUPPORT.md](docs/LANGUAGE_SUPPORT.md), [docs/FINAL_VERIFICATION.md](docs/FINAL_VERIFICATION.md).
 
 ## What is implemented

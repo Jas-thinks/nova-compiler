@@ -2,6 +2,7 @@
 #include <iostream>
 #include <iterator>
 #include "nova/pipeline.hpp"
+#include "nova/x86.hpp"
 
 namespace nova {
 
@@ -17,6 +18,7 @@ bool hasFlag(const std::vector<std::string>& args, const std::string& key) {
 int usage() {
     std::cerr << "usage: novac <command> [options]\n"
                  "  compile [--passes=all|none|a,b,..] [--run] [--trace] [--target=optimized|baseline] [--max-steps=N] [--max-trace=N]   (source on stdin, JSON on stdout)\n"
+                 "  asm [--passes=..]       x86-64 assembly (native backend) for the program on stdin; see scripts/nova-native.sh\n"
                  "  grammar                 grammar, FIRST/FOLLOW and LR(1) tables as JSON\n"
                  "  state N                 kernel and closure of LR(1) state N\n"
                  "  fuzz [--count=N] [--seed=S] [--passes=...]   differential fuzz test\n"
@@ -47,6 +49,15 @@ int runCli(int argc, char** argv) {
             std::string src((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
             auto r = compileSource(src, co);
             std::cout << resultToJson(*r, co).dump() << "\n";
+            return 0;
+        }
+        if (cmd == "asm") {   // native backend: x86-64 assembly for the (optimized) program on stdin
+            CompileOptions co; std::string err;
+            if (!OptConfig::parse(optValue(args, "passes", "all"), co.opt, err)) { std::cerr << err << "\n"; return 2; }
+            std::string src((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
+            auto r = compileSource(src, co);
+            if (!r->success) { for (auto& d : r->diagnostics.items()) std::cerr << d.message << "\n"; return 1; }
+            std::cout << generateX86(optValue(args, "passes", "all") == "none" ? r->ir : r->opt.program);
             return 0;
         }
         if (cmd == "grammar") { std::cout << novaTable().tablesJson().dump() << "\n"; return 0; }
