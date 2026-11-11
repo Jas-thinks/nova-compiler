@@ -111,5 +111,9 @@ class ExplorerCRequest(BaseModel):
     opt_level: int = Field(default=1, ge=0, le=3)
 
 
+class SqlRequest(BaseModel):
+    script: str = Field(..., max_length=64 * 1024)
+
+
 class SourceRequest(BaseModel):
     source: str = Field(..., max_length=config.MAX_SOURCE_BYTES)

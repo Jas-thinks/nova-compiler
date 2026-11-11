@@ -1,0 +1,2 @@
+-- Three-valued logic: NULL AND 0 = 0, NULL OR 1 = 1, NULL = NULL is NULL, x / 0 is NULL
+SELECT NULL AND 0, NULL OR 1, NOT NULL, NULL = NULL, 1 IN (2, NULL), 1 / 0, COALESCE(NULL, 7);

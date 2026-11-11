@@ -24,7 +24,7 @@ add_executable(novac src/tools/novac.cpp)
 target_link_libraries(novac PRIVATE nova_core)
 
 target_compile_definitions(nova_core PUBLIC NOVA_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../examples")
-add_executable(nova_tests tests/test_main.cpp tests/test_compiler.cpp tests/test_analysis.cpp)
+add_executable(nova_tests tests/test_main.cpp tests/test_compiler.cpp tests/test_analysis.cpp tests/test_sql.cpp)
 target_compile_definitions(nova_tests PRIVATE NOVA_REGRESSIONS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/regressions")
 target_link_libraries(nova_tests PRIVATE nova_core)
 add_test(NAME nova_unit_tests COMMAND nova_tests)

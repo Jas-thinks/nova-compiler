@@ -28,6 +28,9 @@ Open the printed `http://localhost:5173`. If ports are busy: `NOVA_API_PORT=8765
 
 CLI without the website: `compiler/build/novac compile --run < examples/02_factorial.nova | jq .execution` (also `novac grammar|fuzz|gen|isa|passes`).
 
+## New: NOVA-SQL — a second compiler (SQL → plan → optimizer → bytecode → executor)
+A full SQL compiler and in-memory engine alongside NOVA: recursive-descent parser with located diagnostics and "did you mean", a binder/type checker with **three-valued NULL logic**, a logical plan, a **rule-based optimizer** (constant folding, predicate pushdown across joins, hash-join selection, top-N) that records every rewrite with before/after plans, an expression **bytecode VM**, and an executor reporting measured row counts per operator. `novac sql < script.sql`, `POST /api/sql`, **SQL Compiler** page in the studio. **Verified against SQLite** with a differential fuzzer (4910/4910 random queries agree; it caught a real bug during development) and garbled-input fuzzing under ASan/UBSan. Details: [docs/SQL.md](docs/SQL.md).
+
 ## New: language server, arrays & strings, native backend, verified AI assist, CI
 * **Language server (LSP over stdio)** — `scripts/nova-lsp.sh` / `backend/app/lsp.py`: diagnostics with exact ranges, hover (types, signatures), go-to-definition, find-references, scope-aware completion, document symbols; all derived from the real compiler's output (no second parser). 11 protocol tests plus a real stdio round-trip. A minimal VS Code client is in `editors/vscode/` (**not yet exercised in a real VS Code session**).
 * **Arrays and strings**: `int[]/float[]/bool[]` (literals, `new T[n]`, indexing, bounds checks, pass-by-reference), immutable `string` (`+`, `==`, `len`, `print`). Implemented end to end — lexer, LR(1) grammar (432 states, no conflicts), type checker, IR intrinsics, optimizer-safe, VM heap, reference interpreter, x86-64 runtime — and covered by the random-program generator, so the 1000-program differential fuzz and the native-vs-VM check exercise them. See [docs/GRAMMAR.md](docs/GRAMMAR.md). No garbage collector yet.
@@ -54,7 +57,7 @@ scripts/    dev / build / serve / test / clean
 ```
 
 ## Test status (last run)
-169 C++ · 53 backend · 25 frontend tests passing; 1000/1000 random programs (now including arrays and strings) identical across reference interpreter / VM / optimized VM; native x86-64 output equal to the VM on all examples + random programs; ASan/UBSan clean (`./scripts/test.sh`, `./scripts/sanitize.sh`).
+178 C++ · 61 backend · 28 frontend tests passing; 1000/1000 random programs (now including arrays and strings) identical across reference interpreter / VM / optimized VM; native x86-64 output equal to the VM on all examples + random programs; ASan/UBSan clean plus NOVA-SQL vs SQLite on random queries (`./scripts/test.sh`, `./scripts/sanitize.sh`).
 
 ## Documentation
 [ARCHITECTURE](docs/ARCHITECTURE.md) · [COMPILER_PIPELINE](docs/COMPILER_PIPELINE.md) · [ADVANCED_ANALYSIS](docs/ADVANCED_ANALYSIS.md) · [LANGUAGE_SUPPORT](docs/LANGUAGE_SUPPORT.md) · [FINAL_VERIFICATION](docs/FINAL_VERIFICATION.md) · [RESUME_DESCRIPTION](docs/RESUME_DESCRIPTION.md) · [PROJECT_OVERVIEW](docs/PROJECT_OVERVIEW.md) (professor-facing) · [LANGUAGE_SPEC](docs/LANGUAGE_SPEC.md) · [GRAMMAR](docs/GRAMMAR.md) · [COMPILER_ARCHITECTURE](docs/COMPILER_ARCHITECTURE.md) · [PARSING_ALGORITHM](docs/PARSING_ALGORITHM.md) · [IR_AND_OPTIMIZATION](docs/IR_AND_OPTIMIZATION.md) · [BYTECODE_SPEC](docs/BYTECODE_SPEC.md) · [API_DOCUMENTATION](docs/API_DOCUMENTATION.md) · [TESTING](docs/TESTING.md) · [DEMO_SCRIPT](docs/DEMO_SCRIPT.md)

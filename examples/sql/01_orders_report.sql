@@ -1,0 +1,8 @@
+-- Join + GROUP BY + HAVING + ORDER BY/LIMIT: run with  novac sql < examples/sql/01_orders_report.sql
+CREATE TABLE users (id INT PRIMARY KEY, name TEXT NOT NULL, age INT, city TEXT);
+CREATE TABLE orders (oid INT PRIMARY KEY, uid INT, amount FLOAT);
+INSERT INTO users VALUES (1,'ann',30,'NYC'),(2,'bob',25,'LA'),(3,'cy',NULL,'NYC'),(4,'dee',41,'SF');
+INSERT INTO orders VALUES (10,1,9.5),(11,1,20),(12,2,5.25),(13,9,1);
+SELECT u.name, SUM(o.amount) AS total, COUNT(*) AS n
+FROM users u JOIN orders o ON u.id = o.uid
+WHERE u.age > 20 GROUP BY u.name HAVING SUM(o.amount) > 5 ORDER BY total DESC LIMIT 5;

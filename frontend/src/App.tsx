@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import {
   BookOpen, Boxes, BugPlay, Cpu, FlaskConical, GraduationCap, Layers, LayoutDashboard, ListTree, Loader2, Network, Play, ScanText,
-  Sigma, SquareTerminal, Menu, GitBranch, Telescope, TestTube2, TriangleAlert, Zap, X,
+  Database, Sigma, SquareTerminal, Menu, GitBranch, Telescope, TestTube2, TriangleAlert, Zap, X,
 } from 'lucide-react'
 import { NovaProvider, useNova } from './state/NovaContext'
 import { useHashRoute } from './hooks/useHashRoute'
@@ -23,6 +23,7 @@ const Docs = lazy(() => import('./pages/Docs'))
 const Learn = lazy(() => import('./pages/Learn'))
 const Analysis = lazy(() => import('./pages/Analysis'))
 const Explorer = lazy(() => import('./pages/Explorer'))
+const SqlLab = lazy(() => import('./pages/SqlLab'))
 
 interface NavItem { id: string; label: string; icon: ReactNode; page: ReactNode; group: string }
 const I = 16
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { id: 'playground', label: 'Compiler Playground', icon: <SquareTerminal size={I} />, page: <Playground />, group: 'Workspace' },
   { id: 'learn', label: 'Learn Mode', icon: <GraduationCap size={I} />, page: <Learn />, group: 'Workspace' },
   { id: 'explorer', label: 'Compiler Explorer', icon: <Telescope size={I} />, page: <Explorer />, group: 'Workspace' },
+  { id: 'sql', label: 'SQL Compiler', icon: <Database size={I} />, page: <SqlLab />, group: 'Workspace' },
   { id: 'lexical', label: 'Lexical Analysis', icon: <ScanText size={I} />, page: <Lexical />, group: 'Front end' },
   { id: 'syntax', label: 'Syntax Analysis', icon: <Network size={I} />, page: <Syntax />, group: 'Front end' },
   { id: 'ast', label: 'AST Explorer', icon: <ListTree size={I} />, page: <AstExplorer />, group: 'Front end' },

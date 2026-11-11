@@ -30,6 +30,7 @@ from .models import (
     ExplorerCRequest,
     ExplainRequest,
     SourceRequest,
+    SqlRequest,
     OptimizeRequest,
     TestRunRequest,
 )
@@ -287,6 +288,12 @@ def explain(req: ExplainRequest):
         return {"available": True, "explanation": llm.explain(req.source, req.diagnostic)}
     except Exception as exc:  # network / API failure must not affect compilation
         return {"available": True, "explanation": None, "note": f"explanation service failed: {exc}"}
+
+
+@app.post("/api/sql")
+def run_sql(req: SqlRequest):
+    """NOVA-SQL compiler + engine: diagnostics, AST, plans before/after optimization, expression bytecode, results."""
+    return cc.run_sql(req.script)
 
 
 def _ai_call(fn, req: SourceRequest):

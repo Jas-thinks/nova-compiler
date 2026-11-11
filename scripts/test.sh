@@ -15,6 +15,8 @@ if command -v gcc >/dev/null 2>&1; then
   info "Native x86-64 backend vs VM (examples + 100 random programs)"
   "$NOVA_ROOT/scripts/native_diff.sh" 100 || FAIL=1
 fi
+info "NOVA-SQL vs SQLite differential fuzz (300 random schemas/queries)"
+python3 "$NOVA_ROOT/scripts/sql_fuzz.py" --count 300 || FAIL=1
 ensure_venv
 info "Backend tests (pytest)"
 (cd "$NOVA_ROOT/backend" && .venv/bin/python -m pytest -q tests) || FAIL=1

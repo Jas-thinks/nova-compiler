@@ -65,6 +65,11 @@ def compile_source(
     return _parse(_run(config.NOVAC_BIN, args, source))
 
 
+def run_sql(script: str) -> dict:
+    """NOVA-SQL: compile and execute a ';'-separated script against a fresh in-memory database."""
+    return _parse(_run(config.NOVAC_BIN, ["sql"], script))
+
+
 _grammar_cache: dict | None = None
 
 

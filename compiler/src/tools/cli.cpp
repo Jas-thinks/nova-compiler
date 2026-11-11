@@ -3,6 +3,7 @@
 #include <iterator>
 #include "nova/pipeline.hpp"
 #include "nova/x86.hpp"
+#include "nova/sql.hpp"
 
 namespace nova {
 
@@ -19,6 +20,7 @@ int usage() {
     std::cerr << "usage: novac <command> [options]\n"
                  "  compile [--passes=all|none|a,b,..] [--run] [--trace] [--target=optimized|baseline] [--max-steps=N] [--max-trace=N]   (source on stdin, JSON on stdout)\n"
                  "  asm [--passes=..]       x86-64 assembly (native backend) for the program on stdin; see scripts/nova-native.sh\n"
+                 "  sql                     NOVA-SQL: run a ';'-separated SQL script on stdin, JSON report on stdout\n"
                  "  grammar                 grammar, FIRST/FOLLOW and LR(1) tables as JSON\n"
                  "  state N                 kernel and closure of LR(1) state N\n"
                  "  fuzz [--count=N] [--seed=S] [--passes=...]   differential fuzz test\n"
@@ -58,6 +60,11 @@ int runCli(int argc, char** argv) {
             auto r = compileSource(src, co);
             if (!r->success) { for (auto& d : r->diagnostics.items()) std::cerr << d.message << "\n"; return 1; }
             std::cout << generateX86(optValue(args, "passes", "all") == "none" ? r->ir : r->opt.program, !hasFlag(args, "no-regalloc"));
+            return 0;
+        }
+        if (cmd == "sql") {   // NOVA-SQL: script on stdin, JSON report on stdout
+            std::string src((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
+            std::cout << runSqlScript(src).dump() << "\n";
             return 0;
         }
         if (cmd == "grammar") { std::cout << novaTable().tablesJson().dump() << "\n"; return 0; }

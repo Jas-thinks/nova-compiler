@@ -247,3 +247,20 @@ export interface Capabilities {
   llm_available: boolean
 }
 export interface LastTests { ran: boolean; at?: number; result?: TestRunResponse }
+
+// ---- NOVA-SQL ----
+export interface SqlDiagnostic { severity: string; phase: string; category: string; code: string; message: string; explanation: string; suggestion: string; loc: { line: number; col: number; endLine: number; endCol: number } }
+export interface SqlOptStep { rule: string; description: string; before: string; after: string }
+export interface SqlPlanNode { op: string; detail: string; rows: number; width: number; children: SqlPlanNode[] }
+export interface SqlStatement {
+  index: number; kind: string; text: string; ast: string; ok: boolean; skipped?: boolean
+  columns: string[]; types: string[]; rows: (string | number | null)[][]; rowCount: number; rowsAffected: number; truncated?: boolean
+  plan?: { original: string; optimized: string; optimizedWithStats: string; tree: SqlPlanNode; history: SqlOptStep[] }
+  bytecode: { source: string; code: string[] }[]
+  stats: Record<string, number>; elapsedMs: number; diagnostics: SqlDiagnostic[]
+}
+export interface SqlResponse {
+  success: boolean; tokenCount: number; errorCount: number; elapsedMs: number
+  diagnostics: SqlDiagnostic[]; statements: SqlStatement[]
+  catalog: { name: string; rows: number; columns: { name: string; type: string; notNull: boolean; primaryKey: boolean }[] }[]
+}

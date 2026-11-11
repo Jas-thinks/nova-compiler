@@ -1,6 +1,6 @@
 import type {
   CompileResponse, DebugStartResponse, DebugState, ExecuteResponse, Example, GrammarInfo, HealthInfo,
-  OptimizeResponse, TestRunResponse, Capabilities, ExplorerCResult, ExplorerLanguage, LastTests,
+  OptimizeResponse, SqlResponse, TestRunResponse, Capabilities, ExplorerCResult, ExplorerLanguage, LastTests,
 } from '../types/api'
 
 export class ApiError extends Error {
@@ -55,6 +55,7 @@ export const api = {
   debugContinue: (session_id: string, breakpoints: number[]) => post<DebugState>('/api/debug/continue', { session_id, breakpoints }),
   debugBreakpoints: (session_id: string, breakpoints: number[]) => post<DebugState>('/api/debug/breakpoints', { session_id, breakpoints }),
   debugSeek: (session_id: string, cursor: number) => post<DebugState>('/api/debug/seek', { session_id, cursor }),
+  sql: (script: string) => post<SqlResponse>('/api/sql', { script }),
   isa: () => request<{ instructions: { op: string; description: string }[] }>('/api/isa').then((r) => r.instructions),
   debugReset: (session_id: string) => post<DebugState>('/api/debug/reset', { session_id }),
   runTests: (fuzz_count: number, seed: number, unit_tests: boolean) => post<TestRunResponse>('/api/tests/run', { fuzz_count, seed, unit_tests }),
