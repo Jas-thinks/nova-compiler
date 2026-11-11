@@ -1,0 +1,10 @@
+// @title Runtime error: division by zero
+// @desc Compiles fine; the VM traps at run time. The optimizer must not fold this away.
+// @category runtime
+fn main() {
+    let a: int = 10;
+    let zero: int = 5 - 5;
+    print(a / 2);
+    print(a / zero);
+    print(1);
+}

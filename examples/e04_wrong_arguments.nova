@@ -1,0 +1,12 @@
+// @title Error: wrong function calls
+// @desc Wrong argument count, wrong argument type and a call to an undefined function.
+// @category errors
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn main() {
+    print(add(1));
+    print(add(1, 2.0));
+    print(addd(1, 2));
+}

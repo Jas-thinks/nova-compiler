@@ -1,0 +1,10 @@
+// Regression/boundary: INT_MIN / -1 and INT_MIN % -1 must wrap (no host SIGFPE), identically in every engine.
+fn main() {
+    let m: int = -9223372036854775807 - 1;
+    let d: int = 0 - 1;
+    print(m / d);
+    print(m % d);
+    print(m * d);
+    print(0 - m);
+    print(m - 1);
+}

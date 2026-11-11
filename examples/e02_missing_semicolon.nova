@@ -1,0 +1,7 @@
+// @title Error: missing semicolon
+// @desc Syntax error found by the LR(1) parser; location points just after the previous token.
+// @category errors
+fn main() {
+    let a: int = 5
+    print(a);
+}

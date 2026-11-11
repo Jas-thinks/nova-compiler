@@ -1,0 +1,8 @@
+// Regression: the right operand of && / || must not run (and must not be optimized into running) when short-circuited.
+fn main() {
+    let z: int = 0;
+    let a: bool = z != 0 && 10 / z > 1;
+    let b: bool = z == 0 || 10 / z > 1;
+    print(a);
+    print(b);
+}

@@ -1,0 +1,14 @@
+// @title Error: duplicate declaration & missing return
+// @desc Redeclaring a variable in the same scope, and a function that can fall off its end.
+// @category errors
+fn sign(n: int) -> int {
+    if (n > 0) {
+        return 1;
+    }
+}
+
+fn main() {
+    let x: int = 1;
+    let x: int = 2;
+    print(sign(x));
+}

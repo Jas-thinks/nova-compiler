@@ -1,0 +1,189 @@
+#include "nova/interp.hpp"
+#include <map>
+#include <unordered_map>
+
+#include <sstream>
+
+namespace nova {
+
+namespace {
+
+// ---------------------------------------------------------------------------------------------
+// Independent re-implementation of NOVA's primitive semantics (deliberately NOT using value.hpp's
+// evalBin/evalUn/valueToString): integers go through 128-bit arithmetic and are truncated to 64 bits,
+// formatting uses iostreams. Float +,-,*,/ and comparisons are IEEE-754 double operations by definition
+// of the language, so they are necessarily the same hardware operations in every engine.
+// ---------------------------------------------------------------------------------------------
+using i128 = __int128;
+int64_t wrap64(i128 v) { return static_cast<int64_t>(static_cast<uint64_t>(static_cast<unsigned __int128>(v) & 0xFFFFFFFFFFFFFFFFull)); }
+
+std::string refFormat(const Value& v) {
+    if (v.type == Type::Bool) return v.b ? "true" : "false";
+    if (v.type == Type::Int) { std::ostringstream o; o << v.i; return o.str(); }
+    double d = v.f;
+    if (d != d) return "nan";
+    if (d > 1.7976931348623157e308) return "inf";
+    if (d < -1.7976931348623157e308) return "-inf";
+    std::ostringstream o; o.precision(15); o << d;
+    std::string s = o.str();
+    bool plain = true;
+    for (char c : s) if (c == '.' || c == 'e') plain = false;
+    return plain ? s + ".0" : s;
+}
+
+struct RuntimeFail { std::string msg; bool limit; };
+
+Value refUnary(bool minus, const Value& a) {
+    if (!minus) return Value::Bool(!a.b);
+    if (a.type == Type::Float) return Value::Float(-a.f);
+    return Value::Int(wrap64(-static_cast<i128>(a.i)));
+}
+Value refCast(bool toFloat, const Value& a) {
+    if (toFloat) return Value::Float(static_cast<double>(a.i));
+    double d = a.f;
+    if (d != d) return Value::Int(0);
+    if (d >= 9223372036854775808.0) return Value::Int(INT64_MAX);
+    if (d < -9223372036854775808.0) return Value::Int(INT64_MIN);
+    return Value::Int(static_cast<int64_t>(d));      // in range: C++ conversion truncates toward zero
+}
+Value refBinary(const std::string& op, const Value& l, const Value& r) {
+    if (l.type == Type::Int) {
+        i128 a = l.i, b = r.i;
+        if (op == "+") return Value::Int(wrap64(a + b));
+        if (op == "-") return Value::Int(wrap64(a - b));
+        if (op == "*") return Value::Int(wrap64(a * b));
+        if (op == "/") { if (b == 0) throw RuntimeFail{"division by zero", false}; return Value::Int(wrap64(a / b)); }
+        if (op == "%") { if (b == 0) throw RuntimeFail{"modulo by zero", false}; return Value::Int(wrap64(a % b)); }
+        if (op == "<") return Value::Bool(a < b);
+        if (op == "<=") return Value::Bool(a <= b);
+        if (op == ">") return Value::Bool(a > b);
+        if (op == ">=") return Value::Bool(a >= b);
+        if (op == "==") return Value::Bool(a == b);
+        return Value::Bool(a != b);
+    }
+    if (l.type == Type::Float) {
+        double a = l.f, b = r.f;
+        if (op == "+") return Value::Float(a + b);
+        if (op == "-") return Value::Float(a - b);
+        if (op == "*") return Value::Float(a * b);
+        if (op == "/") return Value::Float(a / b);
+        if (op == "<") return Value::Bool(a < b);
+        if (op == "<=") return Value::Bool(a <= b);
+        if (op == ">") return Value::Bool(a > b);
+        if (op == ">=") return Value::Bool(a >= b);
+        if (op == "==") return Value::Bool(a == b);
+        return Value::Bool(a != b);
+    }
+    return Value::Bool(op == "==" ? l.b == r.b : l.b != r.b);
+}
+
+class Interp {
+public:
+    Interp(Program& p, int64_t maxSteps, int maxDepth) : prog_(p), maxSteps_(maxSteps), maxDepth_(maxDepth) {}
+
+    InterpResult run() {
+        InterpResult r;
+        try {
+            FuncDecl* m = find("main");
+            if (!m) throw RuntimeFail{"no main", false};
+            callFunction(*m, {});
+        } catch (RuntimeFail& f) {
+            r.ok = false; r.error = f.msg; r.limitHit = f.limit;
+        }
+        r.output = std::move(out_);
+        return r;
+    }
+
+private:
+    Program& prog_;
+    int64_t maxSteps_, steps_ = 0;
+    int maxDepth_, depth_ = 0;
+    std::vector<std::string> out_;
+    using Env = std::unordered_map<const Symbol*, Value>;
+    Env* env_ = nullptr;
+    bool returning_ = false;
+    Value retVal_;
+
+    FuncDecl* find(const std::string& n) { for (auto& f : prog_.functions) if (f->name == n) return f.get(); return nullptr; }
+    void tick() { if (++steps_ > maxSteps_) throw RuntimeFail{"step limit", true}; }
+
+    Value callFunction(FuncDecl& f, const std::vector<Value>& args) {
+        if (depth_ >= maxDepth_) throw RuntimeFail{"stack overflow", true};
+        ++depth_;
+        Env env; Env* saved = env_; env_ = &env;
+        for (size_t i = 0; i < f.params.size(); ++i) env[f.params[i]->sym] = args[i];
+        returning_ = false; retVal_ = Value();
+        execBlock(*f.body);
+        Value rv = retVal_;
+        returning_ = false;
+        env_ = saved; --depth_;
+        return rv;
+    }
+
+    void execBlock(Block& b) { for (auto& s : b.stmts) { exec(*s); if (returning_) return; } }
+
+    void exec(Stmt& s) {
+        tick();
+        switch (s.kind) {
+            case NodeKind::Block: execBlock(static_cast<Block&>(s)); break;
+            case NodeKind::VarDecl: { auto& d = static_cast<VarDecl&>(s); (*env_)[d.sym] = eval(*d.init); break; }
+            case NodeKind::Assign: { auto& a = static_cast<Assign&>(s); (*env_)[a.sym] = eval(*a.value); break; }
+            case NodeKind::If: {
+                auto& i = static_cast<If&>(s);
+                if (eval(*i.cond).b) execBlock(*i.thenB); else if (i.elseB) exec(*i.elseB);
+                break;
+            }
+            case NodeKind::While: {
+                auto& w = static_cast<While&>(s);
+                while (eval(*w.cond).b) { tick(); execBlock(*w.body); if (returning_) return; }
+                break;
+            }
+            case NodeKind::Return: {
+                auto& r = static_cast<Return&>(s);
+                Value v; if (r.value) v = eval(*r.value);
+                retVal_ = v; returning_ = true; break;
+            }
+            case NodeKind::Print: {
+                if (out_.size() >= 5000) throw RuntimeFail{"output limit", true};
+                out_.push_back(refFormat(eval(*static_cast<Print&>(s).value))); break;
+            }
+            case NodeKind::ExprStmt: eval(*static_cast<ExprStmt&>(s).expr); break;
+            default: break;
+        }
+    }
+
+    Value eval(Expr& e) {
+        tick();
+        switch (e.kind) {
+            case NodeKind::IntLit: return Value::Int(static_cast<IntLit&>(e).value);
+            case NodeKind::FloatLit: return Value::Float(static_cast<FloatLit&>(e).value);
+            case NodeKind::BoolLit: return Value::Bool(static_cast<BoolLit&>(e).value);
+            case NodeKind::VarRef: return (*env_)[static_cast<VarRef&>(e).sym];
+            case NodeKind::Unary: {
+                auto& u = static_cast<Unary&>(e);
+                return refUnary(u.op == "-", eval(*u.operand));
+            }
+            case NodeKind::Binary: {
+                auto& b = static_cast<Binary&>(e);
+                if (b.op == "&&") { Value l = eval(*b.lhs); return l.b ? eval(*b.rhs) : l; }
+                if (b.op == "||") { Value l = eval(*b.lhs); return l.b ? l : eval(*b.rhs); }
+                Value l = eval(*b.lhs), r = eval(*b.rhs);
+                return refBinary(b.op, l, r);
+            }
+            case NodeKind::Call: {
+                auto& c = static_cast<Call&>(e);
+                std::vector<Value> args;
+                for (auto& a : c.args) args.push_back(eval(*a));
+                if (c.builtin) return refCast(c.name == "to_float", args[0]);
+                return callFunction(*find(c.name), args);
+            }
+            default: return Value();
+        }
+    }
+};
+
+} // namespace
+
+InterpResult interpret(Program& program, int64_t maxSteps, int maxDepth) { return Interp(program, maxSteps, maxDepth).run(); }
+
+} // namespace nova

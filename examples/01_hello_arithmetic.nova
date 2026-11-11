@@ -1,0 +1,19 @@
+// @title Arithmetic & branching
+// @desc The introductory NOVA program: variables, expressions, if/else.
+// @category basics
+fn main() {
+    let age: int = 22;
+    let marks: float = 91.5;
+    let passed: bool = true;
+
+    let result: int = 10 + 20 * 2;
+
+    if (result > 30) {
+        print(result);
+    } else {
+        print(0);
+    }
+    print(marks);
+    print(passed);
+    print(age);
+}

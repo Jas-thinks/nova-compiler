@@ -1,0 +1,10 @@
+// Regression: a common subexpression must not be reused after one of its operands was reassigned.
+fn main() {
+    let a: int = 3;
+    let b: int = 4;
+    let x: int = a * b + 1;
+    a = 10;
+    let y: int = a * b + 1;
+    print(x);
+    print(y);
+}

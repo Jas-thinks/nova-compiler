@@ -1,0 +1,17 @@
+// @title Recursive factorial
+// @desc Function calls, parameters, return values and recursion (watch call frames in the debugger).
+// @category functions
+fn fact(n: int) -> int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * fact(n - 1);
+}
+
+fn main() {
+    let i: int = 1;
+    while (i <= 6) {
+        print(fact(i));
+        i = i + 1;
+    }
+}

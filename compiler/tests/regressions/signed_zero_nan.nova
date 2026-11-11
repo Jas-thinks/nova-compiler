@@ -1,0 +1,12 @@
+// Regression/boundary: IEEE special values must survive optimization (x + 0.0 is not x for -0.0).
+fn main() {
+    let nz: float = -0.0;
+    let zero: float = 0.0;
+    print(nz + zero);
+    print(nz * 1.0);
+    print(zero / zero);
+    print(1.0 / zero);
+    print(to_int(1.0 / zero));
+    print(to_int(0.0 / zero));
+    print(to_int(0.0 - 1.0 / zero));
+}

@@ -1,0 +1,16 @@
+// Regression: a function whose first instruction is a loop label makes the entry block a jump target.
+// Dominator/SSA construction needs an entry block without predecessors (a synthetic one is inserted).
+fn f(n: int) -> int {
+    while (false && n < 3) {
+        print(1);
+    }
+    let s: int = 0;
+    while (n > 0) {
+        s = s + n;
+        n = n - 1;
+    }
+    return s;
+}
+fn main() {
+    print(f(4));
+}

@@ -1,0 +1,14 @@
+// @title Floats and explicit casts
+// @desc NOVA has no implicit conversions: use to_float / to_int.
+// @category basics
+fn average(a: int, b: int, c: int) -> float {
+    return to_float(a + b + c) / 3.0;
+}
+
+fn main() {
+    let avg: float = average(90, 85, 77);
+    print(avg);
+    let rounded: int = to_int(avg * 100.0);
+    print(rounded);
+    print(avg > 84.0 && avg < 85.0);
+}

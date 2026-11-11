@@ -1,0 +1,29 @@
+// @title Fibonacci (iterative + recursive)
+// @desc Two implementations of the same function; both print the same values.
+// @category functions
+fn fib_rec(n: int) -> int {
+    if (n < 2) { return n; }
+    return fib_rec(n - 1) + fib_rec(n - 2);
+}
+
+fn fib_iter(n: int) -> int {
+    let a: int = 0;
+    let b: int = 1;
+    let i: int = 0;
+    while (i < n) {
+        let next: int = a + b;
+        a = b;
+        b = next;
+        i = i + 1;
+    }
+    return a;
+}
+
+fn main() {
+    let n: int = 0;
+    while (n < 10) {
+        print(fib_iter(n));
+        n = n + 1;
+    }
+    print(fib_rec(12));
+}

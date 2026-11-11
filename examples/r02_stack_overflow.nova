@@ -1,0 +1,10 @@
+// @title Runtime error: stack overflow
+// @desc Unbounded recursion is stopped by the VM call-depth limit.
+// @category runtime
+fn forever(n: int) -> int {
+    return forever(n + 1) + 1;
+}
+
+fn main() {
+    print(forever(0));
+}

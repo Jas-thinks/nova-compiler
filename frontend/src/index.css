@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { @apply bg-ink-950 text-fg font-sans antialiased text-[13px]; }
+* { scrollbar-width: thin; scrollbar-color: #2d3644 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2d3644; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+::selection { background: #7b93ff44; }
+
+@layer components {
+  .panel { @apply bg-ink-900 border border-ink-700 rounded-lg; }
+  .panel-head { @apply flex items-center gap-2 px-3 h-9 border-b border-ink-700 text-2xs uppercase tracking-wider text-fg-dim font-medium shrink-0; }
+  .btn { @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-ink-600 bg-ink-800 text-fg hover:bg-ink-700 hover:border-ink-500 transition-colors disabled:opacity-40 disabled:pointer-events-none text-[12.5px]; }
+  .btn-primary { @apply bg-nova/90 border-nova text-ink-950 font-medium hover:bg-nova-strong hover:border-nova-strong; }
+  .btn-icon { @apply inline-flex items-center justify-center h-8 w-8 rounded-md border border-ink-600 bg-ink-800 hover:bg-ink-700 disabled:opacity-40 disabled:pointer-events-none transition-colors; }
+  .chip { @apply inline-flex items-center gap-1 h-5 px-1.5 rounded text-2xs font-medium border; }
+  .th { @apply text-left px-3 py-1.5 text-2xs uppercase tracking-wider text-fg-mute font-medium sticky top-0 bg-ink-900 border-b border-ink-700; }
+  .td { @apply px-3 py-1 border-b border-ink-800 align-top; }
+  .code { @apply font-mono text-[12.5px]; }
+}
+.monaco-bp { background: #f2555a; border-radius: 50%; width: 10px !important; height: 10px !important; margin: 5px 0 0 6px; }
+.monaco-cur-line { background: #7b93ff26; }
+.monaco-hl { background: #e5a93a30; border-bottom: 1px solid #e5a93a; }
+.react-flow__attribution { display: none; }
+.react-flow { background: #0f1217; }

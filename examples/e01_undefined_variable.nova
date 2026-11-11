@@ -1,0 +1,7 @@
+// @title Error: undefined variable
+// @desc Misspelled identifier; the compiler suggests a fix using edit distance.
+// @category errors
+fn main() {
+    let counter: int = 10;
+    print(countr + 1);
+}
