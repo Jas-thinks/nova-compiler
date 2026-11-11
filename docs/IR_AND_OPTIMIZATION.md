@@ -39,3 +39,10 @@ Every rewrite appends an `OptRecord{pass, function, before, after, explanation, 
 * Each pass is tested in isolation (`optimizer.*` unit tests) and all combinations are checked against the reference interpreter in `optimizer.eachPassPreservesSemanticsOnExamples`.
 * **Differential fuzzing** (`novac fuzz`): random valid programs are run through (a) a reference AST interpreter that shares nothing with IR/optimizer/VM except the primitive arithmetic helper `value.hpp`, (b) the unoptimized VM, and (c) the optimized VM. Output *and* runtime error text must be identical. On the development machine 3000 programs with all passes, and 800 with each of several pass subsets, showed zero mismatches (re-run via `./scripts/test.sh` or the Compiler Tests page for current numbers).
 * The shared arithmetic helper means a bug in primitive semantics (e.g. wrap-around) would be common to all three engines; it is covered by direct unit tests.
+
+## Interprocedural inlining (pass `inlining`)
+Runs once, before the intra-procedural passes, on the whole IR program (up to 3 rounds so inlined bodies that contain calls are inlined in turn).
+* **Eligibility:** callee is not `main`, not (transitively) recursive — checked by "is the function reachable from itself" on the call graph — and has at most 30 IR instructions; a caller never grows beyond 600 instructions.
+* **Transformation:** parameters become copies of the arguments, every callee local/label is renamed with a globally unique site tag (`sq_i3.x`, `L2_i3`), `return v` becomes `dst = v; goto inl_end_iN`.
+* **Why it matters:** removes call overhead and exposes the body to constant propagation, CSE and DCE in the caller (measured 2.2× on native code for a loop calling small helpers; `scripts/bench.sh`).
+* **Bug found by the differential tests while writing it:** the site counter restarted each round, so round 2 could generate duplicate variable names that silently shared state; the counter is now unique across rounds. Unit tests: `inlining.*`; the 1000-program fuzz exercises it through the generated helper functions.

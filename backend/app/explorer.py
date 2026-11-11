@@ -50,7 +50,8 @@ def languages() -> list[dict]:
          "next_step": None if t["clang"] else "Install clang to additionally expose the Clang AST dump and LLVM IR; the adapter switches automatically."},
         {"id": "python", "name": "Python", "status": "not_implemented", "description": "No adapter implemented.", "outputs": []},
         {"id": "java", "name": "Java", "status": "not_implemented", "description": "No adapter implemented.", "outputs": []},
-        {"id": "sql", "name": "SQL", "status": "not_implemented", "description": "No adapter implemented.", "outputs": []},
+        {"id": "sql", "name": "SQL (NOVA-SQL)", "status": "full", "description": "Own SQL compiler + in-memory engine: tokens, AST, logical plan before/after optimization, expression bytecode, execution. Open the SQL Compiler page.",
+         "outputs": ["tokens", "ast", "plan", "optimizer-history", "bytecode", "results"], "endpoint": "/api/sql"},
     ]
 
 

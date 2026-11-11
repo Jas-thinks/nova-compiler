@@ -1,69 +1,89 @@
-# NOVA — Interactive Compiler Engineering Platform
+# NOVA — Compiler Engineering Platform
 
-A real compiler for a small statically typed language (C++17), a FastAPI backend, and a React/TypeScript studio that visualises **every compiler phase from real compiler output** — tokens, a canonical LR(1) parse trace, AST, symbol tables, three-address IR, optimization history, NOVA VM bytecode, and a debugger that steps (even backwards) through the actual VM.
+> Two compilers, one native backend, one studio. **NOVA** (a statically typed language → LR(1) parser → SSA analyses → optimizer → VM / x86-64) and **NOVA-SQL** (SQL → logical plan → rule-based optimizer → bytecode VM → executor), all visualised from *real compiler output* and **verified against independent oracles** (reference interpreter, native code, SQLite).
 
 ```
-fn fact(n: int) -> int {
-    if (n <= 1) { return 1; }
-    return n * fact(n - 1);
-}
-fn main() { print(fact(5)); }     // 120
+fn sq(x: int) -> int { return x * x; }
+fn hyp(a: int, b: int) -> int { return sq(a) + sq(b); }
+fn main() { print(hyp(3, 4)); }                         // 25  — hyp and sq are inlined, then folded by the optimizer
 ```
+```sql
+SELECT u.name, SUM(o.amount) AS total
+FROM users u, orders o WHERE u.id = o.uid AND u.age > 20     -- cross join + WHERE ...
+GROUP BY u.name HAVING SUM(o.amount) > 5 ORDER BY total DESC LIMIT 5;   -- ... becomes filter-below-hash-join + top-N
+```
+
+## Highlights
+
+| Area | What is built | How it is verified |
+|---|---|---|
+| **NOVA front end** | Hand-written lexer, **canonical LR(1)** parser generator (432 states, 0 conflicts, panic-mode error recovery), typed AST, scoped semantic analysis with "did you mean" | Grammar conflict test, 1000-program random fuzz, mutation fuzz of invalid programs (diagnostics must be well-formed, never crash) |
+| **NOVA middle end** | 3-address IR, **CFG / dominators / liveness / reaching definitions / pruned SSA**, **7 optimization passes** incl. **interprocedural inlining** (call-graph recursion check, size limits), full per-rewrite history | Reference interpreter ≡ VM ≡ optimized VM on 1000s of random programs; injected-optimizer-bug test proves the checker can fail |
+| **NOVA back end** | Stack **bytecode VM** with time-travel debugger; **native x86-64** (System V) with a **linear-scan register allocator**, heap arrays & strings, runtime traps | Native output ≡ VM output on every example + random programs (`scripts/native_diff.sh`); ASan/UBSan clean |
+| **NOVA-SQL** | Lexer, recursive-descent parser, binder/type checker (**3-valued NULL logic**), logical plan, optimizer (**constant folding, predicate pushdown through joins, hash join, top-N**), expression bytecode VM, executor, `CASE`, joins/aggregates/`HAVING`/`DISTINCT`/`ORDER BY`/`LIMIT` | **Differential fuzzer vs SQLite** (thousands of random schemas+queries agree; it found a real bug), garbled-input fuzzing under sanitizers |
+| **Assistant** | Compiler-**verified quick fixes**, iterative auto-fix, rule-based **runtime root-cause analysis** (no API key), optional Claude fixes re-checked by the compiler, LSP quick-fix code actions | A fix is "verified" only if applying it and re-compiling removes the error without adding new ones |
+| **Tooling** | FastAPI service with sandboxed subprocess execution, **language server (LSP)**, React/TypeScript studio (19 pages, Monaco, React Flow), CI workflow | 288 automated tests + fuzzers (below) |
 
 ## Quick start
-Requirements: g++ (C++17), CMake ≥ 3.16, Python ≥ 3.11 (with `venv`), Node ≥ 18. Optional: clang or gcc for the C viewer.
+Requirements: g++ (C++17), CMake ≥ 3.16, Python ≥ 3.11 (with `venv`), Node ≥ 18, gcc (for the native backend).
 
 ```bash
 ./scripts/dev.sh        # builds the compiler, installs deps, starts backend + website, prints the URL
+./scripts/serve.sh      # single-process production mode (FastAPI serves frontend/dist) on :8000
+./scripts/test.sh       # every suite: CTest, 1000-program fuzz, native-vs-VM, SQL-vs-SQLite, pytest, tsc + Vitest
+./scripts/sanitize.sh   # ASan + UBSan build: unit tests, fuzzers, SQL differential + mutation fuzz
+./scripts/bench.sh      # native vs CPython, register allocation on/off, inlining on/off
 ```
-Open the printed `http://localhost:5173`. If ports are busy: `NOVA_API_PORT=8765 NOVA_WEB_PORT=5199 ./scripts/dev.sh`.
+CLI: `novac compile --run < prog.nova | jq .execution` · `scripts/nova-native.sh prog.nova -o prog` · `novac asm < prog.nova` · `novac sql < script.sql` · `scripts/nova-lsp.sh` (LSP on stdio).
 
-| Script | Purpose |
+## Measured results (this machine, best of 5)
+| Benchmark | Result |
 |---|---|
-| `scripts/dev.sh` | development: backend (uvicorn) + Vite dev server |
-| `scripts/build.sh` | build compiler, backend venv, production frontend bundle |
-| `scripts/serve.sh` | single-process production mode (FastAPI serves `frontend/dist`) |
-| `scripts/test.sh` | all test suites (CTest, 1000-program fuzz, pytest, tsc + Vitest) |
-| `scripts/clean.sh [--all]` | remove build artefacts (and venv/node_modules) |
+| `fib(35)` native x86-64 vs CPython | **~12× faster** (≈55 ms vs ≈650 ms) |
+| prime sieve native vs CPython | **~12× faster** |
+| Linear-scan register allocation | `fib(35)` **1.3×** faster; **no gain** on the sieve (bound by `idiv`) — reported honestly |
+| Interprocedural inlining (hot loop calling small helpers) | **2.2× faster** native code (104 ms → 48 ms), identical output |
+| Optimizer on 2000 random programs | IR instructions **305 047 → 111 822**, VM steps **1.86 M → 0.76 M**, 0 mismatches |
+| NOVA-SQL vs SQLite | 4910/4910 random queries agree (earlier run), 2460/2460 after adding `CASE`; 0 failures |
 
-CLI without the website: `compiler/build/novac compile --run < examples/02_factorial.nova | jq .execution` (also `novac grammar|fuzz|gen|isa|passes`).
+## Test status (last full run)
+**184** C++ unit tests · **72** backend tests · **32** frontend tests · 1000/1000 random programs identical across 3 engines · 313/313 native-vs-VM programs identical · SQL differential 0 failures · sanitizers: 0 findings, 0 crashes on 600 garbled SQL scripts + 600 mutated NOVA programs.
 
-## New: NOVA-SQL — a second compiler (SQL → plan → optimizer → bytecode → executor)
-A full SQL compiler and in-memory engine alongside NOVA: recursive-descent parser with located diagnostics and "did you mean", a binder/type checker with **three-valued NULL logic**, a logical plan, a **rule-based optimizer** (constant folding, predicate pushdown across joins, hash-join selection, top-N) that records every rewrite with before/after plans, an expression **bytecode VM**, and an executor reporting measured row counts per operator. `novac sql < script.sql`, `POST /api/sql`, **SQL Compiler** page in the studio. **Verified against SQLite** with a differential fuzzer (4910/4910 random queries agree; it caught a real bug during development) and garbled-input fuzzing under ASan/UBSan. Details: [docs/SQL.md](docs/SQL.md).
-
-## New: language server, arrays & strings, native backend, verified AI assist, CI
-* **Language server (LSP over stdio)** — `scripts/nova-lsp.sh` / `backend/app/lsp.py`: diagnostics with exact ranges, hover (types, signatures), go-to-definition, find-references, scope-aware completion, document symbols; all derived from the real compiler's output (no second parser). 11 protocol tests plus a real stdio round-trip. A minimal VS Code client is in `editors/vscode/` (**not yet exercised in a real VS Code session**).
-* **Arrays and strings**: `int[]/float[]/bool[]` (literals, `new T[n]`, indexing, bounds checks, pass-by-reference), immutable `string` (`+`, `==`, `len`, `print`). Implemented end to end — lexer, LR(1) grammar (432 states, no conflicts), type checker, IR intrinsics, optimizer-safe, VM heap, reference interpreter, x86-64 runtime — and covered by the random-program generator, so the 1000-program differential fuzz and the native-vs-VM check exercise them. See [docs/GRAMMAR.md](docs/GRAMMAR.md). No garbage collector yet.
-* **Native x86-64 backend** (`novac asm`, `scripts/nova-native.sh prog.nova -o prog`): IR → System V assembly → real executable via gcc, with a small C runtime (`compiler/runtime/nova_rt.c`) that traps `/0` and stack overflow like the VM. `scripts/native_diff.sh` checks native output == VM output on every example and N random programs (410/410 in the last run). `scripts/bench.sh` (best of 5, same machine): ~11× faster than CPython on both `fib(35)` and a prime sieve. A **linear-scan register allocator** (liveness-based intervals, callee-saved `%rbx,%r12-%r15`, furthest-end spilling; floats stay on the stack) speeds up call-heavy `fib(35)` by ~1.27× and does nothing for the sieve, which is bound by the integer-divide instruction — measured, not assumed.
-* **AI fix + debug, verified by the compiler** (`POST /api/ai/fix`, `/api/ai/debug`, needs `ANTHROPIC_API_KEY`): the model proposes a corrected program; the C++ compiler re-compiles it and only a candidate that passes is returned (up to 3 retries fed with the new diagnostics). The debugger endpoint explains runtime failures from the VM's recorded trace. Tested offline with a scripted model (`backend/tests/test_ai_assist.py`). Frontend UI for these endpoints is not built yet.
-* **CI** (`.github/workflows/ci.yml`): full suite plus the ASan/UBSan build on every push.
-
-## New in the previous release
-**CFG & Data-flow page** (basic blocks, edges, dominators, loops, liveness and reaching-definitions with iteration history, pruned SSA with φ nodes) · **Compiler Explorer** (real gcc/clang compile-only viewer for C; other languages explicitly *not implemented*) · **live capability and test dashboard** · hardened subprocess sandbox (`backend/app/sandbox.py`: timeout, output cap, rlimits — *no* container isolation) · pass-impact table in the Optimization Lab. See [docs/ADVANCED_ANALYSIS.md](docs/ADVANCED_ANALYSIS.md), [docs/LANGUAGE_SUPPORT.md](docs/LANGUAGE_SUPPORT.md), [docs/FINAL_VERIFICATION.md](docs/FINAL_VERIFICATION.md).
-
-## What is implemented
-* **Lexer**, **canonical LR(1) parser** (items, closure, goto, ACTION/GOTO, shift/reduce/accept/error, parse trace), typed **AST**, **semantic analysis** (scopes, symbol tables, type/call/return checks, warnings), **3-address IR**, **6 optimization passes** (constant propagation & folding, algebraic simplification, CSE, unreachable-code elimination, liveness-based DCE) with a full transformation log, **bytecode generator + VM** (calls, recursion, runtime errors, state snapshots), a separate **reference interpreter** for differential testing and a **random program generator**.
-* **Website:** 13 sections + Learn Mode; Monaco editor with live diagnostics, AST graph (React Flow), optimization lab with per-pass toggles and measured before/after metrics, debugger with breakpoints/step-in/over/back, runtime frame inspector, live test runner.
-* **Diagnostics:** exact line/column ranges, category, explanation, suggested fix, edit-distance spelling suggestions. Optional AI explanation (`ANTHROPIC_API_KEY`) only rephrases an existing diagnostic; everything works without it.
+## Architecture
+```
+            NOVA source                                        SQL script
+                │                                                  │
+   lexer ──► canonical LR(1) parser ──► typed AST         lexer ──► recursive-descent parser ──► AST
+                │                                                  │
+        semantic analysis (scopes, types)               binder / type checker (3-valued logic)
+                │                                                  │
+          3-address IR ──► [inlining] ──► CFG · SSA · dataflow     logical plan ──► rule-based optimizer
+                │              + 6 intra-procedural passes                │   (fold · pushdown · hash join · top-N)
+        ┌───────┴────────┐                                       expression bytecode (SQL-VM)
+   stack bytecode   x86-64 asm (linear-scan regalloc)                     │
+   VM + debugger    + C runtime (traps, strings, heap)               executor ──► rows + per-operator stats
+        │                │
+        └── differential tests vs reference interpreter ──┘          └── differential tests vs SQLite
+```
 
 ## Layout
 ```
-compiler/   C++17 engine (lexer, parser, ast, semantic, ir, optimizer, codegen, vm, diagnostics) + tests
-backend/    FastAPI app (app/) + pytest suite
-frontend/   React + TS + Vite + Tailwind + Monaco + React Flow
-examples/   shipped NOVA programs (valid, error, runtime-error)
-docs/       specs, architecture, testing, API, demo script, project overview
-scripts/    dev / build / serve / test / clean
+compiler/   C++17: lexer, parser (LR(1) generator), ast, semantic, ir, optimizer, analysis, codegen (VM + x86-64), vm, sql/, tests
+backend/    FastAPI app (compile, optimize, debug sessions, asm, sql, suggest/autofix, AI, LSP) + pytest suite
+frontend/   React + TypeScript + Vite + Tailwind + Monaco + React Flow (19 pages) + Vitest
+examples/   NOVA programs (valid, error, runtime-error) and SQL scripts
+benchmarks/ fib, primes, inlining workloads (+ CPython equivalents)
+editors/    VS Code client for the language server
+report/     the full LaTeX project report (PDF)
+docs/       specs, architecture, SQL, testing, API, demo script
+scripts/    dev / build / serve / test / sanitize / bench / native build / SQL fuzzer / LSP launcher
 ```
 
-## Test status (last run)
-178 C++ · 61 backend · 28 frontend tests passing; 1000/1000 random programs (now including arrays and strings) identical across reference interpreter / VM / optimized VM; native x86-64 output equal to the VM on all examples + random programs; ASan/UBSan clean plus NOVA-SQL vs SQLite on random queries (`./scripts/test.sh`, `./scripts/sanitize.sh`).
-
 ## Documentation
-[ARCHITECTURE](docs/ARCHITECTURE.md) · [COMPILER_PIPELINE](docs/COMPILER_PIPELINE.md) · [ADVANCED_ANALYSIS](docs/ADVANCED_ANALYSIS.md) · [LANGUAGE_SUPPORT](docs/LANGUAGE_SUPPORT.md) · [FINAL_VERIFICATION](docs/FINAL_VERIFICATION.md) · [RESUME_DESCRIPTION](docs/RESUME_DESCRIPTION.md) · [PROJECT_OVERVIEW](docs/PROJECT_OVERVIEW.md) (professor-facing) · [LANGUAGE_SPEC](docs/LANGUAGE_SPEC.md) · [GRAMMAR](docs/GRAMMAR.md) · [COMPILER_ARCHITECTURE](docs/COMPILER_ARCHITECTURE.md) · [PARSING_ALGORITHM](docs/PARSING_ALGORITHM.md) · [IR_AND_OPTIMIZATION](docs/IR_AND_OPTIMIZATION.md) · [BYTECODE_SPEC](docs/BYTECODE_SPEC.md) · [API_DOCUMENTATION](docs/API_DOCUMENTATION.md) · [TESTING](docs/TESTING.md) · [DEMO_SCRIPT](docs/DEMO_SCRIPT.md)
+[Project report (PDF)](report/nova_report.pdf) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [COMPILER_PIPELINE](docs/COMPILER_PIPELINE.md) · [SQL](docs/SQL.md) · [ADVANCED_ANALYSIS](docs/ADVANCED_ANALYSIS.md) · [LANGUAGE_SPEC](docs/LANGUAGE_SPEC.md) · [GRAMMAR](docs/GRAMMAR.md) · [PARSING_ALGORITHM](docs/PARSING_ALGORITHM.md) · [IR_AND_OPTIMIZATION](docs/IR_AND_OPTIMIZATION.md) · [BYTECODE_SPEC](docs/BYTECODE_SPEC.md) · [API_DOCUMENTATION](docs/API_DOCUMENTATION.md) · [TESTING](docs/TESTING.md) · [DEMO_SCRIPT](docs/DEMO_SCRIPT.md)
 
 ## Honest limitations
-No garbage collector (heap is bump-allocated and capped) · strings are immutable and byte-oriented · only int/float/bool arrays (no nesting) · bytecode targets the NOVA VM, not native code · debugger replays a recorded, capped trace · optimizations are intra-procedural.
+No garbage collector (allocations live until exit and are capped) · strings are immutable byte strings · arrays are single-level `int[]/float[]/bool[]` · floats are not register-allocated (SysV has no callee-saved xmm) · inlining skips recursive and large callees · NOVA-SQL has no subqueries, `UNION`, window functions or indexes and keeps everything in memory · Claude-based fixes were only exercised against a scripted model (no API key in the test environment) · the VS Code client in `editors/vscode` has not been run in a real VS Code session.
 
 ## Safety
-The backend never uses a shell; external tools run with argv only, a wall-clock timeout, an output cap, CPU/memory rlimits (reported by `/api/health` when unavailable), and source/step/depth limits. **There is no container/namespace/seccomp isolation** — run the service inside a container or VM before exposing it to untrusted users.
+The backend never uses a shell; external tools run with argv only, a wall-clock timeout, an output cap, CPU/memory rlimits (reported by `/api/health` when unavailable), and source/step/depth limits; SQL has row, join-pair and result caps. **There is no container/namespace/seccomp isolation** — run the service inside a container or VM before exposing it to untrusted users.

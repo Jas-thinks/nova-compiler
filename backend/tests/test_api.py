@@ -240,11 +240,12 @@ def test_optimized_cfg_is_smaller_for_dead_branch():
 def test_capabilities_are_discovered_not_hardcoded():
     j = client.get("/api/capabilities").json()
     n = j["nova"]
-    assert n["stages_ok"] and n["parser"]["conflicts"] == 0 and len(n["optimization_passes"]) == 6
+    assert n["stages_ok"] and n["parser"]["conflicts"] == 0 and len(n["optimization_passes"]) == 7
     assert all(n["analyses"].values()) and n["execution_verified_against_reference"]
     langs = {l["id"]: l for l in j["explorer"]}
     assert langs["nova"]["status"] == "full"
-    assert langs["python"]["status"] == langs["java"]["status"] == langs["sql"]["status"] == "not_implemented"
+    assert langs["python"]["status"] == langs["java"]["status"] == "not_implemented"
+    assert langs["sql"]["status"] == "full" and langs["sql"]["endpoint"] == "/api/sql"
 
 
 def test_explorer_c_returns_real_toolchain_output_or_clear_error():
