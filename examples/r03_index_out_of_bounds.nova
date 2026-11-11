@@ -1,0 +1,8 @@
+// @title Runtime error: index out of bounds
+// @desc Array accesses are bounds-checked in the VM and in native code.
+// @category runtime
+fn main() {
+    let a: int[] = [1, 2, 3];
+    print(a[2]);
+    print(a[3]);
+}

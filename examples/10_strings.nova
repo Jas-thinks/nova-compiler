@@ -1,0 +1,18 @@
+// @title Strings
+// @desc Immutable string literals with concatenation, equality, len() and print.
+// @category strings
+fn greet(name: string) -> string {
+    return "Hello, " + name + "!";
+}
+
+fn main() {
+    let s: string = greet("NOVA");
+    print(s);
+    print(len(s));
+    print(s == "Hello, NOVA!");
+    print(s != greet("world"));
+    let line: string = "";
+    let i: int = 0;
+    while (i < 3) { line = line + "ab"; i = i + 1; }
+    print(line);
+}

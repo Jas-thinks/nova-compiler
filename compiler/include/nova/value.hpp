@@ -11,7 +11,7 @@
 namespace nova {
 
 struct Value {
-    Type type = Type::Int;   // Int | Float | Bool
+    Type type = Type::Int;   // Int | Float | Bool | Str | arrays (heap references: `i` is the heap handle)
     int64_t i = 0;
     double f = 0;
     bool b = false;
@@ -20,7 +20,7 @@ struct Value {
     static Value Bool(bool v) { Value x; x.type = Type::Bool; x.b = v; return x; }
     bool operator==(const Value& o) const {
         if (type != o.type) return false;
-        switch (type) { case Type::Int: return i == o.i; case Type::Float: return f == o.f || (std::isnan(f) && std::isnan(o.f)); case Type::Bool: return b == o.b; default: return true; }
+        switch (type) { case Type::Int: return i == o.i; case Type::Float: return f == o.f || (std::isnan(f) && std::isnan(o.f)); case Type::Bool: return b == o.b; case Type::Str: case Type::ArrInt: case Type::ArrFloat: case Type::ArrBool: return i == o.i; default: return true; }
     }
     bool operator!=(const Value& o) const { return !(*this == o); }
     bool isZero() const { return type == Type::Int ? i == 0 : type == Type::Float ? f == 0 : !b; }
@@ -37,7 +37,9 @@ inline std::string formatFloat(double d) {
 }
 inline std::string valueToString(const Value& v) {
     switch (v.type) { case Type::Int: return std::to_string(v.i); case Type::Float: return formatFloat(v.f);
-                      case Type::Bool: return v.b ? "true" : "false"; default: return "?"; }
+                      case Type::Bool: return v.b ? "true" : "false";
+                      case Type::Str: return "str@" + std::to_string(v.i); case Type::ArrInt: case Type::ArrFloat: case Type::ArrBool: return "arr@" + std::to_string(v.i);
+                      default: return "?"; }
 }
 
 enum class BinOp { Add, Sub, Mul, Div, Mod, Lt, Le, Gt, Ge, Eq, Ne };
@@ -92,7 +94,7 @@ inline bool evalBin(BinOp op, const Value& a, const Value& b, Value& out, std::s
             case BinOp::Ne: out = Value::Bool(a.f != b.f); return true;
             default: break;
         }
-    } else {
+    } else if (a.type == Type::Bool) {
         if (op == BinOp::Eq) { out = Value::Bool(a.b == b.b); return true; }
         if (op == BinOp::Ne) { out = Value::Bool(a.b != b.b); return true; }
     }

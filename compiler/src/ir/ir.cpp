@@ -10,6 +10,17 @@ Json Operand::toJson() const {
     return j;
 }
 
+std::string Operand::str() const {
+    if (kind == None) return "";
+    if (kind == Const) {
+        if (type != Type::Str) return valueToString(val);
+        std::string s = "\"";
+        for (char c : name) { if (c == '\n') s += "\\n"; else if (c == '\t') s += "\\t"; else if (c == '"') s += "\\\""; else if (c == '\\') s += "\\\\"; else s += c; }
+        return s + "\"";
+    }
+    return name;
+}
+
 std::string IRInstr::str() const {
     switch (kind) {
         case Copy: return dst.str() + " = " + a.str();
@@ -22,6 +33,12 @@ std::string IRInstr::str() const {
         case JumpIfFalse: return "if_false " + a.str() + " goto " + target;
         case JumpIfTrue: return "if_true " + a.str() + " goto " + target;
         case Call: {
+            if (isIntrinsic(callee)) {
+                if (callee == "__aload") return dst.str() + " = " + args[0].str() + "[" + args[1].str() + "]";
+                if (callee == "__astore") return args[0].str() + "[" + args[1].str() + "] = " + args[2].str();
+                if (callee == "__newarr") return dst.str() + " = new " + typeName(elemType(dst.type)) + "[" + args[0].str() + "]";
+                if (callee == "__len") return dst.str() + " = len(" + args[0].str() + ")";
+            }
             std::string s = dst.isNone() ? "" : dst.str() + " = ";
             s += "call " + callee + "(";
             for (size_t i = 0; i < args.size(); ++i) s += (i ? ", " : "") + args[i].str();
@@ -44,7 +61,12 @@ std::string IRInstr::explain() const {
         case Jump: return "Unconditional jump to " + target + ".";
         case JumpIfFalse: return "Jump to " + target + " when " + a.str() + " is false; otherwise fall through.";
         case JumpIfTrue: return "Jump to " + target + " when " + a.str() + " is true; otherwise fall through.";
-        case Call: return "Call function " + callee + " with " + std::to_string(args.size()) + " argument(s)" + (dst.isNone() ? "." : "; the result goes to " + dst.str() + ".");
+        case Call:
+            if (callee == "__aload") return "Load element " + args[1].str() + " of array " + args[0].str() + " into " + dst.str() + " (traps when out of bounds).";
+            if (callee == "__astore") return "Store " + args[2].str() + " into element " + args[1].str() + " of array " + args[0].str() + " (traps when out of bounds).";
+            if (callee == "__newarr") return "Allocate a zero-initialised array of " + args[0].str() + " element(s) on the heap (traps if the size is negative).";
+            if (callee == "__len") return "Length of " + args[0].str() + " (string bytes or array elements).";
+            return "Call function " + callee + " with " + std::to_string(args.size()) + " argument(s)" + (dst.isNone() ? "." : "; the result goes to " + dst.str() + ".");
         case Return: return a.isNone() ? "Return from the function without a value." : "Return " + a.str() + " to the caller.";
         case Print: return "Print " + a.str() + " to program output.";
     }

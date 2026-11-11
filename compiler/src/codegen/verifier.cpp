@@ -47,6 +47,10 @@ std::vector<std::string> verifyBytecode(const BcProgram& p) {
             auto need = [&](int k) { if (d < k) { bad(a, std::string("stack underflow executing ") + opName(in.op)); abort = true; return false; } return true; };
             switch (in.op) {
                 case OpCode::PUSH: case OpCode::LOAD: nd = d + 1; break;
+                case OpCode::PUSHS: if (in.a < 0 || in.a >= static_cast<int>(p.strings.size())) bad(a, "string pool index out of range"); nd = d + 1; break;
+                case OpCode::NEWARR: case OpCode::ALEN: if (!need(1)) break; break;
+                case OpCode::ALOAD: case OpCode::SCAT: case OpCode::SEQ: if (!need(2)) break; nd = d - 1; break;
+                case OpCode::ASTORE: if (!need(3)) break; nd = d - 3; break;
                 case OpCode::POP: case OpCode::STORE: case OpCode::PRINT: if (!need(1)) break; nd = d - 1; break;
                 case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD:
                 case OpCode::LT: case OpCode::LE: case OpCode::GT: case OpCode::GE: case OpCode::EQ: case OpCode::NE: if (!need(2)) break; nd = d - 1; break;

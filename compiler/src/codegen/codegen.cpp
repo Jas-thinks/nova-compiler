@@ -1,4 +1,5 @@
 #include "nova/bytecode.hpp"
+#include <algorithm>
 #include <map>
 #include <sstream>
 
@@ -6,7 +7,8 @@ namespace nova {
 
 const char* opName(OpCode op) {
     static const char* n[] = {"PUSH", "POP", "LOAD", "STORE", "ADD", "SUB", "MUL", "DIV", "MOD", "NEG", "NOT", "LT", "LE", "GT", "GE", "EQ", "NE",
-                              "I2F", "F2I", "JMP", "JZ", "JNZ", "CALL", "RET", "RETV", "PRINT", "HALT"};
+                              "I2F", "F2I", "JMP", "JZ", "JNZ", "CALL", "RET", "RETV", "PRINT",
+                              "PUSHS", "NEWARR", "ALOAD", "ASTORE", "ALEN", "SCAT", "SEQ", "HALT"};
     return n[static_cast<int>(op)];
 }
 
@@ -38,6 +40,13 @@ const char* opDescription(OpCode op) {
         case OpCode::RET: return "Pop the return value, destroy the frame, push the value in the caller.";
         case OpCode::RETV: return "Destroy the frame and return to the caller (no value).";
         case OpCode::PRINT: return "Pop a value and append it to the program output.";
+        case OpCode::PUSHS: return "Push a reference to string literal #a from the constant pool.";
+        case OpCode::NEWARR: return "Pop a size n, allocate a zero-initialised heap array of n elements, push its reference (traps if n < 0).";
+        case OpCode::ALOAD: return "Pop index, pop array, push array[index] (traps when out of bounds).";
+        case OpCode::ASTORE: return "Pop value, pop index, pop array; array[index] = value (traps when out of bounds).";
+        case OpCode::ALEN: return "Pop a string or array reference, push its length.";
+        case OpCode::SCAT: return "Pop b, pop a (strings), push a new string a + b.";
+        case OpCode::SEQ: return "Pop b, pop a (strings), push whether their contents are equal.";
         case OpCode::HALT: return "Stop the virtual machine.";
     }
     return "";
@@ -68,7 +77,13 @@ struct Emitter {
         return p.code.size() - 1;
     }
     void push(const Operand& o) {
-        if (o.isConst()) { size_t k = emit(OpCode::PUSH); p.code[k].k = o.val; }
+        if (o.isConst() && o.type == Type::Str) {
+            auto it = std::find(p.strings.begin(), p.strings.end(), o.name);
+            int idx = static_cast<int>(it - p.strings.begin());
+            if (it == p.strings.end()) p.strings.push_back(o.name);
+            emit(OpCode::PUSHS, idx);
+        }
+        else if (o.isConst()) { size_t k = emit(OpCode::PUSH); p.code[k].k = o.val; }
         else emit(OpCode::LOAD, slot.at(o.name));
     }
 };
@@ -108,7 +123,13 @@ BcProgram generateBytecode(const IRProgram& ir) {
             em.line = i.line; em.col = i.col;
             switch (i.kind) {
                 case IRInstr::Copy: em.push(i.a); em.emit(OpCode::STORE, em.slot.at(i.dst.name)); break;
-                case IRInstr::Bin: em.push(i.a); em.push(i.b); em.emit(opFromBin(i.bop)); em.emit(OpCode::STORE, em.slot.at(i.dst.name)); break;
+                case IRInstr::Bin:
+                    em.push(i.a); em.push(i.b);
+                    if (i.a.type == Type::Str) {                     // string operators have dedicated opcodes
+                        em.emit(i.bop == BinOp::Add ? OpCode::SCAT : OpCode::SEQ);
+                        if (i.bop == BinOp::Ne) em.emit(OpCode::NOT);
+                    } else em.emit(opFromBin(i.bop));
+                    em.emit(OpCode::STORE, em.slot.at(i.dst.name)); break;
                 case IRInstr::Un:
                     em.push(i.a);
                     em.emit(i.uop == UnOp::Neg ? OpCode::NEG : i.uop == UnOp::Not ? OpCode::NOT : i.uop == UnOp::ToFloat ? OpCode::I2F : OpCode::F2I);
@@ -118,6 +139,15 @@ BcProgram generateBytecode(const IRProgram& ir) {
                 case IRInstr::JumpIfFalse: em.push(i.a); em.fixups.push_back({em.emit(OpCode::JZ), i.target}); break;
                 case IRInstr::JumpIfTrue: em.push(i.a); em.fixups.push_back({em.emit(OpCode::JNZ), i.target}); break;
                 case IRInstr::Call: {
+                    if (isIntrinsic(i.callee)) {
+                        for (auto& a : i.args) em.push(a);
+                        if (i.callee == "__newarr") { size_t k = em.emit(OpCode::NEWARR); p.code[k].k.type = i.dst.type; }
+                        else if (i.callee == "__aload") em.emit(OpCode::ALOAD);
+                        else if (i.callee == "__astore") em.emit(OpCode::ASTORE);
+                        else em.emit(OpCode::ALEN);
+                        if (i.dst.isName()) em.emit(OpCode::STORE, em.slot.at(i.dst.name));
+                        break;
+                    }
                     for (auto& a : i.args) em.push(a);
                     size_t k = em.emit(OpCode::CALL, fidx.at(i.callee));
                     p.code[k].argc = static_cast<int>(i.args.size());
@@ -157,6 +187,7 @@ std::string BcProgram::comment(int addr) const {
     switch (i.op) {
         case OpCode::LOAD: case OpCode::STORE: return fi >= 0 ? functions[fi].slotNames[i.a] : "";
         case OpCode::JMP: case OpCode::JZ: case OpCode::JNZ: return "-> " + std::to_string(i.a);
+        case OpCode::PUSHS: return i.a >= 0 && i.a < static_cast<int>(strings.size()) ? "\"" + strings[i.a] + "\"" : "";
         case OpCode::CALL: return i.a >= 0 ? functions[i.a].name + " (" + std::to_string(i.argc) + " args)" : "";
         default: return "";
     }
@@ -167,6 +198,8 @@ std::string BcProgram::disasm(int addr) const {
     std::string s = opName(i.op);
     switch (i.op) {
         case OpCode::PUSH: s += " " + valueToString(i.k); break;
+        case OpCode::PUSHS: s += " " + std::to_string(i.a); break;
+        case OpCode::NEWARR: s += std::string(" ") + typeName(i.k.type); break;
         case OpCode::LOAD: case OpCode::STORE: case OpCode::JMP: case OpCode::JZ: case OpCode::JNZ: s += " " + std::to_string(i.a); break;
         case OpCode::CALL: s += " " + std::to_string(i.a) + ", " + std::to_string(i.argc); break;
         default: break;

@@ -6,7 +6,8 @@ namespace nova {
 
 const char* typeName(Type t) {
     switch (t) { case Type::Int: return "int"; case Type::Float: return "float"; case Type::Bool: return "bool";
-                 case Type::Void: return "void"; case Type::Error: return "<error>"; }
+                 case Type::Void: return "void"; case Type::Error: return "<error>";
+                 case Type::Str: return "string"; case Type::ArrInt: return "int[]"; case Type::ArrFloat: return "float[]"; case Type::ArrBool: return "bool[]"; }
     return "?";
 }
 
@@ -18,6 +19,8 @@ const char* nodeKindName(NodeKind k) {
         case NodeKind::Print: return "Print"; case NodeKind::ExprStmt: return "ExprStmt"; case NodeKind::IntLit: return "IntLit";
         case NodeKind::FloatLit: return "FloatLit"; case NodeKind::BoolLit: return "BoolLit"; case NodeKind::VarRef: return "VarRef";
         case NodeKind::Binary: return "Binary"; case NodeKind::Unary: return "Unary"; case NodeKind::Call: return "Call";
+        case NodeKind::StrLit: return "StrLit"; case NodeKind::ArrayLit: return "ArrayLit"; case NodeKind::NewArray: return "NewArray";
+        case NodeKind::Index: return "Index"; case NodeKind::IndexAssign: return "IndexAssign";
     }
     return "?";
 }
@@ -38,9 +41,14 @@ using PN = ParseNode;
 
 const PN& ch(const PN& n, size_t i) { return *n.children[i]; }
 
-Type typeOf(const PN& t) {
-    const std::string& l = ch(t, 0).lexeme;
+Type elemOf(const PN& e) {   // ElemType -> int | float | bool
+    const std::string& l = ch(e, 0).lexeme;
     return l == "int" ? Type::Int : l == "float" ? Type::Float : Type::Bool;
+}
+Type typeOf(const PN& t) {   // Type -> ElemType | ElemType [ ] | string
+    if (ch(t, 0).isToken) return Type::Str;
+    Type e = elemOf(ch(t, 0));
+    return t.children.size() == 3 ? arrayOf(e) : e;
 }
 
 ExprP expr(const PN& n);
@@ -65,11 +73,26 @@ std::unique_ptr<Call> call(const PN& n) {  // Call -> ID ( ArgsOpt )
 
 ExprP expr(const PN& n) {
     const std::string& s = n.symbol;
+    if (s == "Postfix" && n.children.size() == 4) {   // Postfix -> Postfix [ Expr ]
+        auto e = std::make_unique<Index>(); e->loc = n.loc; e->base = expr(ch(n, 0)); e->index = expr(ch(n, 2)); return e;
+    }
     if (s == "Expr" || (n.children.size() == 1 && s != "Primary" && s != "Call")) return expr(ch(n, 0));
     if (s == "Primary") {
         const PN& f = ch(n, 0);
         if (f.isToken) {
             if (f.symbol == "(") return expr(ch(n, 1));
+            if (f.symbol == "STR_LIT") { auto e = std::make_unique<StrLit>(); e->loc = n.loc; e->value = f.lexeme; return e; }
+            if (f.symbol == "new") { auto e = std::make_unique<NewArray>(); e->loc = n.loc; e->elem = elemOf(ch(n, 1)); e->size = expr(ch(n, 3)); return e; }
+            if (f.symbol == "[") {   // [ Args ]
+                auto e = std::make_unique<ArrayLit>(); e->loc = n.loc;
+                std::vector<const PN*> els; const PN* cur = &ch(n, 1);
+                while (true) {
+                    if (cur->children.size() == 3) { els.push_back(&ch(*cur, 2)); cur = &ch(*cur, 0); }
+                    else { els.push_back(&ch(*cur, 0)); break; }
+                }
+                for (auto it = els.rbegin(); it != els.rend(); ++it) e->elems.push_back(expr(**it));
+                return e;
+            }
             if (f.symbol == "INT_LIT") { auto e = std::make_unique<IntLit>(); e->loc = n.loc; e->value = std::strtoll(f.lexeme.c_str(), nullptr, 10); return e; }
             if (f.symbol == "FLOAT_LIT") { auto e = std::make_unique<FloatLit>(); e->loc = n.loc; e->text = f.lexeme; e->value = std::strtod(f.lexeme.c_str(), nullptr); return e; }
             if (f.symbol == "true" || f.symbol == "false") { auto e = std::make_unique<BoolLit>(); e->loc = n.loc; e->value = f.symbol == "true"; return e; }
@@ -115,6 +138,10 @@ StmtP stmt(const PN& n) {  // Stmt -> X
         d->declType = typeOf(ch(x, 3)); d->init = expr(ch(x, 5)); return d;
     }
     if (s == "Assign") {
+        if (x.children.size() == 7) {   // ID [ Expr ] = Expr ;
+            auto a = std::make_unique<IndexAssign>(); a->loc = x.loc; a->name = ch(x, 0).lexeme; a->nameLoc = ch(x, 0).loc;
+            a->index = expr(ch(x, 2)); a->value = expr(ch(x, 5)); return a;
+        }
         auto a = std::make_unique<Assign>(); a->loc = x.loc; a->name = ch(x, 0).lexeme; a->nameLoc = ch(x, 0).loc; a->value = expr(ch(x, 2)); return a;
     }
     if (s == "IfStmt") return ifStmt(x);

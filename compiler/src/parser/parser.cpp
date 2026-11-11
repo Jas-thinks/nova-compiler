@@ -12,6 +12,7 @@ std::string terminalDisplay(const std::string& t) {
     if (t == "ID") return "identifier";
     if (t == "INT_LIT") return "integer literal";
     if (t == "FLOAT_LIT") return "float literal";
+    if (t == "STR_LIT") return "string literal";
     if (t == "$") return "end of file";
     return "'" + t + "'";
 }

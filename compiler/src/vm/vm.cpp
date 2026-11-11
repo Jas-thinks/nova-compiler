@@ -12,8 +12,16 @@ struct Frame {
 };
 }
 
+namespace {
+constexpr int64_t kMaxHeapCells = 1 << 22;   // ~32 MB of 8-byte cells; exceeding it is a (deterministic) runtime error
+struct HeapObj { bool isStr = false; std::string s; std::vector<Value> a; };
+}
+
 VMResult runVM(const BcProgram& prog, const VMOptions& opt) {
     VMResult res;
+    std::vector<HeapObj> heap;          // handles are indices; no collector (programs are short-lived and capped by kMaxHeapCells)
+    int64_t heapCells = 0;
+    for (auto& s : prog.strings) { HeapObj o; o.isStr = true; o.s = s; heap.push_back(std::move(o)); heapCells += 1 + static_cast<int64_t>(s.size() / 8); }
     std::vector<Frame> frames;
     frames.push_back({-1, -1, 0, {}, {}});   // entry-stub frame
     int ip = 0;
@@ -107,10 +115,52 @@ VMResult runVM(const BcProgram& prog, const VMOptions& opt) {
             }
             case OpCode::PRINT: {
                 if (!need(1)) { stop = true; break; }
-                std::string s = valueToString(st.back()); st.pop_back();
+                std::string s = st.back().type == Type::Str ? heap[st.back().i].s : valueToString(st.back()); st.pop_back();
                 if (res.output.size() >= opt.maxOutputLines) { fail("output limit exceeded (" + std::to_string(opt.maxOutputLines) + " lines)"); stop = true; break; }
                 res.output.push_back(s); lastEvent = "print " + s;
                 break;
+            }
+            case OpCode::PUSHS: { Value v; v.type = Type::Str; v.i = in.a; st.push_back(v); lastEvent = "push string #" + std::to_string(in.a); break; }
+            case OpCode::NEWARR: {
+                if (!need(1)) { stop = true; break; }
+                int64_t n = st.back().i; st.pop_back();
+                if (n < 0) { fail("negative array size"); stop = true; break; }
+                if (heapCells + n + 1 > kMaxHeapCells) { fail("heap limit exceeded"); stop = true; break; }
+                HeapObj o; Value z; z.type = elemType(in.k.type); o.a.assign(static_cast<size_t>(n), z);
+                heap.push_back(std::move(o)); heapCells += n + 1;
+                Value v; v.type = in.k.type; v.i = static_cast<int64_t>(heap.size()) - 1; st.push_back(v);
+                lastEvent = "allocate " + std::string(typeName(in.k.type)) + " of " + std::to_string(n); break;
+            }
+            case OpCode::ALOAD: {
+                if (!need(2)) { stop = true; break; }
+                int64_t idx = st.back().i; st.pop_back(); const HeapObj& o = heap[st.back().i]; st.pop_back();
+                if (idx < 0 || idx >= static_cast<int64_t>(o.a.size())) { fail("index out of bounds"); stop = true; break; }
+                st.push_back(o.a[idx]); lastEvent = "load element " + std::to_string(idx); break;
+            }
+            case OpCode::ASTORE: {
+                if (!need(3)) { stop = true; break; }
+                Value v = st.back(); st.pop_back(); int64_t idx = st.back().i; st.pop_back(); HeapObj& o = heap[st.back().i]; st.pop_back();
+                if (idx < 0 || idx >= static_cast<int64_t>(o.a.size())) { fail("index out of bounds"); stop = true; break; }
+                o.a[idx] = v; lastEvent = "store element " + std::to_string(idx); break;
+            }
+            case OpCode::ALEN: {
+                if (!need(1)) { stop = true; break; }
+                const HeapObj& o = heap[st.back().i]; st.pop_back();
+                st.push_back(Value::Int(static_cast<int64_t>(o.isStr ? o.s.size() : o.a.size()))); lastEvent = "length"; break;
+            }
+            case OpCode::SCAT: {
+                if (!need(2)) { stop = true; break; }
+                int64_t b = st.back().i; st.pop_back(); int64_t a = st.back().i; st.pop_back();
+                HeapObj o; o.isStr = true; o.s = heap[a].s + heap[b].s;
+                int64_t cost = 1 + static_cast<int64_t>(o.s.size() / 8);
+                if (heapCells + cost > kMaxHeapCells) { fail("heap limit exceeded"); stop = true; break; }
+                heapCells += cost; heap.push_back(std::move(o));
+                Value v; v.type = Type::Str; v.i = static_cast<int64_t>(heap.size()) - 1; st.push_back(v); lastEvent = "concatenate strings"; break;
+            }
+            case OpCode::SEQ: {
+                if (!need(2)) { stop = true; break; }
+                int64_t b = st.back().i; st.pop_back(); int64_t a = st.back().i; st.pop_back();
+                st.push_back(Value::Bool(heap[a].s == heap[b].s)); lastEvent = "compare strings"; break;
             }
             case OpCode::HALT: lastEvent = "halt"; stop = true; break;
         }

@@ -7,7 +7,8 @@
 namespace nova {
 
 enum class OpCode { PUSH, POP, LOAD, STORE, ADD, SUB, MUL, DIV, MOD, NEG, NOT, LT, LE, GT, GE, EQ, NE,
-                    I2F, F2I, JMP, JZ, JNZ, CALL, RET, RETV, PRINT, HALT };
+                    I2F, F2I, JMP, JZ, JNZ, CALL, RET, RETV, PRINT,
+                    PUSHS, NEWARR, ALOAD, ASTORE, ALEN, SCAT, SEQ, HALT };
 
 const char* opName(OpCode op);
 const char* opDescription(OpCode op);
@@ -35,6 +36,7 @@ struct BcProgram {
     std::vector<BcInstr> code;
     std::vector<BcFunction> functions;
     int mainIndex = -1;
+    std::vector<std::string> strings;   // string-literal pool; PUSHS operand `a` indexes it (pool objects occupy heap handles 0..n-1)
     std::string disasm(int addr) const;       // one instruction, human-readable
     std::string comment(int addr) const;      // operand annotation (slot name, callee, target)
     int functionAt(int addr) const;           // index of the function containing addr, -1 for the entry stub

@@ -6,12 +6,12 @@
 
 namespace nova {
 
-enum class TokCat { Keyword, Identifier, IntLiteral, FloatLiteral, Operator, Punctuation, Eof };
+enum class TokCat { Keyword, Identifier, IntLiteral, FloatLiteral, StringLiteral, Operator, Punctuation, Eof };
 
 struct Token {
     TokCat cat = TokCat::Eof;
     std::string lexeme;
-    std::string terminal;  // grammar terminal name: "ID", "INT_LIT", "FLOAT_LIT", keyword/operator text, or "$"
+    std::string terminal;  // grammar terminal name: "ID", "INT_LIT", "FLOAT_LIT", "STR_LIT", keyword/operator text, or "$"
     SourceLoc loc;
     int offset = 0;        // byte offset in source
     Json toJson() const;

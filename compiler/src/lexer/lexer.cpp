@@ -7,7 +7,7 @@
 namespace nova {
 
 static const std::vector<std::string> kKeywords = {"fn", "let", "if", "else", "while", "return", "print",
-                                                   "int", "float", "bool", "true", "false"};
+                                                   "int", "float", "bool", "true", "false", "string", "new"};
 
 const std::vector<std::string>& keywordList() { return kKeywords; }
 bool isKeyword(const std::string& s) {
@@ -21,6 +21,7 @@ const char* tokCatName(TokCat c) {
         case TokCat::Identifier: return "IDENTIFIER";
         case TokCat::IntLiteral: return "INT_LITERAL";
         case TokCat::FloatLiteral: return "FLOAT_LITERAL";
+        case TokCat::StringLiteral: return "STRING_LITERAL";
         case TokCat::Operator: return "OPERATOR";
         case TokCat::Punctuation: return "PUNCTUATION";
         case TokCat::Eof: return "EOF";
@@ -117,6 +118,7 @@ private:
             return;
         }
         if (std::isdigit(static_cast<unsigned char>(c))) { scanNumber(sl, sc, off); return; }
+        if (c == '"') { scanString(sl, sc, off); return; }
         // two-character operators
         char n = peek(1);
         auto two = [&](const char* op) { return c == op[0] && n == op[1]; };
@@ -129,7 +131,7 @@ private:
             }
         }
         static const std::string ops = "+-*/%<>=!";
-        static const std::string puncts = "(){},;:";
+        static const std::string puncts = "(){}[],;:";
         if (ops.find(c) != std::string::npos) { advance(); emit(TokCat::Operator, std::string(1, c), std::string(1, c), sl, sc, off); return; }
         if (puncts.find(c) != std::string::npos) { advance(); emit(TokCat::Punctuation, std::string(1, c), std::string(1, c), sl, sc, off); return; }
         // errors
@@ -146,6 +148,25 @@ private:
                   "This character is not part of the NOVA alphabet, so the scanner cannot form a token from it.",
                   "Remove the character or replace it with a valid operator or punctuation.", {sl, sc, line_, col_});
         }
+    }
+
+    void scanString(int sl, int sc, int off) {
+        advance();   // opening quote
+        std::string s;
+        bool closed = false;
+        while (pos_ < src_.size() && peek() != '\n') {
+            char c = advance();
+            if (c == '"') { closed = true; break; }
+            if (c == '\\') {
+                char e = pos_ < src_.size() ? advance() : '\0';
+                if (e == 'n') s += '\n'; else if (e == 't') s += '\t'; else if (e == '\\') s += '\\'; else if (e == '"') s += '"';
+                else error("Invalid escape", "E-LEX-008", std::string("Unknown escape sequence '\\") + e + "'",
+                           "Supported escapes in string literals are \\n, \\t, \\\\ and \\\".", "Use one of the supported escapes.", {line_, col_ - 2, line_, col_});
+            } else s += c;
+        }
+        if (!closed) { error("Unterminated string", "E-LEX-007", "String literal is never closed",
+                            "A string literal must end with a closing '\"' on the same line.", "Add the closing '\"'.", {sl, sc, line_, col_}); return; }
+        emit(TokCat::StringLiteral, s, "STR_LIT", sl, sc, off);
     }
 
     static std::string hex(unsigned v) { const char* d = "0123456789abcdef"; return std::string() + d[v >> 4] + d[v & 15]; }

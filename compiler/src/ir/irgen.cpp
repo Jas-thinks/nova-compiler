@@ -32,6 +32,15 @@ private:
     void jump(IRInstr::Kind k, const std::string& l, Operand cond = {}) { IRInstr i; i.kind = k; i.target = l; i.a = cond; emit(i); }
     void copy(Operand dst, Operand src) { IRInstr i; i.kind = IRInstr::Copy; i.dst = dst; i.a = src; emit(i); }
 
+    // Emit `dst = callee(args)` (dst only when `result` is not Void) and return dst.
+    Operand intrinsic(const std::string& callee, Type result, std::vector<Operand> args) {
+        IRInstr i; i.kind = IRInstr::Call; i.callee = callee; i.args = std::move(args);
+        Operand t;
+        if (result != Type::Void) { t = newTemp(result); i.dst = t; }
+        emit(i);
+        return t;
+    }
+
     IRFunction genFunction(FuncDecl& fd) {
         IRFunction f; f.name = fd.name; f.ret = fd.ret;
         fn_ = &f; temps_ = 0; labels_ = 0;
@@ -44,8 +53,9 @@ private:
         line_ = fd.body->loc.endLine; col_ = fd.body->loc.endCol - 1;
         IRInstr r; r.kind = IRInstr::Return;
         if (fd.ret != Type::Void) {
-            Value d = fd.ret == Type::Int ? Value::Int(0) : fd.ret == Type::Float ? Value::Float(0) : Value::Bool(false);
-            r.a = Operand::cnst(d);
+            if (fd.ret == Type::Str) r.a = Operand::strConst("");
+            else if (isArrayType(fd.ret)) { r.a = intrinsic("__newarr", fd.ret, {Operand::cnst(Value::Int(0))}); }   // unreachable: semantic analysis proves every path returns
+            else r.a = Operand::cnst(fd.ret == Type::Int ? Value::Int(0) : fd.ret == Type::Float ? Value::Float(0) : Value::Bool(false));
         }
         emit(r);
         fn_ = nullptr;
@@ -67,6 +77,13 @@ private:
                 auto& a = static_cast<Assign&>(s);
                 Operand v = genExpr(*a.value);
                 at(s); copy(Operand::var(a.sym->uniqueName, a.sym->type), v);
+                break;
+            }
+            case NodeKind::IndexAssign: {
+                auto& a = static_cast<IndexAssign&>(s);
+                Operand idx = genExpr(*a.index);
+                Operand v = genExpr(*a.value);
+                at(s); intrinsic("__astore", Type::Void, {Operand::var(a.sym->uniqueName, a.sym->type), idx, v});
                 break;
             }
             case NodeKind::If: {
@@ -118,6 +135,27 @@ private:
             case NodeKind::IntLit: return Operand::cnst(Value::Int(static_cast<IntLit&>(e).value));
             case NodeKind::FloatLit: return Operand::cnst(Value::Float(static_cast<FloatLit&>(e).value));
             case NodeKind::BoolLit: return Operand::cnst(Value::Bool(static_cast<BoolLit&>(e).value));
+            case NodeKind::StrLit: return Operand::strConst(static_cast<StrLit&>(e).value);
+            case NodeKind::NewArray: {
+                auto& n = static_cast<NewArray&>(e);
+                Operand sz = genExpr(*n.size);
+                at(e); return intrinsic("__newarr", e.type, {sz});
+            }
+            case NodeKind::ArrayLit: {
+                auto& a = static_cast<ArrayLit&>(e);
+                at(e);
+                Operand arr = intrinsic("__newarr", e.type, {Operand::cnst(Value::Int(static_cast<int64_t>(a.elems.size())))});
+                for (size_t k = 0; k < a.elems.size(); ++k) {
+                    Operand v = genExpr(*a.elems[k]);
+                    at(*a.elems[k]); intrinsic("__astore", Type::Void, {arr, Operand::cnst(Value::Int(static_cast<int64_t>(k))), v});
+                }
+                return arr;
+            }
+            case NodeKind::Index: {
+                auto& x = static_cast<Index&>(e);
+                Operand b = genExpr(*x.base), i = genExpr(*x.index);
+                at(e); return intrinsic("__aload", e.type, {b, i});
+            }
             case NodeKind::VarRef: { auto& v = static_cast<VarRef&>(e); return Operand::var(v.sym->uniqueName, v.sym->type); }
             case NodeKind::Unary: {
                 auto& u = static_cast<Unary&>(e);
@@ -148,6 +186,7 @@ private:
                 auto& c = static_cast<Call&>(e);
                 std::vector<Operand> args;
                 for (auto& a : c.args) args.push_back(genExpr(*a));
+                if (c.builtin && c.name == "len") { at(e); return intrinsic("__len", Type::Int, {args[0]}); }
                 if (c.builtin) {
                     Operand t = newTemp(e.type);
                     IRInstr i; i.kind = IRInstr::Un; i.uop = c.name == "to_float" ? UnOp::ToFloat : UnOp::ToInt; i.dst = t; i.a = args[0];

@@ -99,6 +99,25 @@ private:
     int64_t maxSteps_, steps_ = 0;
     int maxDepth_, depth_ = 0;
     std::vector<std::string> out_;
+    // Independent heap: strings and arrays are separate vectors indexed by the handle stored in Value::i.
+    std::vector<std::string> strs_;
+    std::vector<std::vector<Value>> arrs_;
+    int64_t cells_ = 0;
+    static constexpr int64_t kMaxCells = 1 << 22;
+    Value newStr(std::string s) {
+        cells_ += 1 + static_cast<int64_t>(s.size() / 8);
+        if (cells_ > kMaxCells) throw RuntimeFail{"heap limit exceeded", true};
+        strs_.push_back(std::move(s));
+        Value v; v.type = Type::Str; v.i = static_cast<int64_t>(strs_.size()) - 1; return v;
+    }
+    Value newArr(Type t, int64_t n) {
+        if (n < 0) throw RuntimeFail{"negative array size", false};
+        if (cells_ + n + 1 > kMaxCells) throw RuntimeFail{"heap limit exceeded", true};
+        cells_ += n + 1;
+        Value z; z.type = elemType(t);
+        arrs_.emplace_back(static_cast<size_t>(n), z);
+        Value v; v.type = t; v.i = static_cast<int64_t>(arrs_.size()) - 1; return v;
+    }
     using Env = std::unordered_map<const Symbol*, Value>;
     Env* env_ = nullptr;
     bool returning_ = false;
@@ -128,6 +147,13 @@ private:
             case NodeKind::Block: execBlock(static_cast<Block&>(s)); break;
             case NodeKind::VarDecl: { auto& d = static_cast<VarDecl&>(s); (*env_)[d.sym] = eval(*d.init); break; }
             case NodeKind::Assign: { auto& a = static_cast<Assign&>(s); (*env_)[a.sym] = eval(*a.value); break; }
+            case NodeKind::IndexAssign: {
+                auto& a = static_cast<IndexAssign&>(s);
+                Value idx = eval(*a.index), v = eval(*a.value);
+                auto& arr = arrs_[(*env_)[a.sym].i];
+                if (idx.i < 0 || idx.i >= static_cast<int64_t>(arr.size())) throw RuntimeFail{"index out of bounds", false};
+                arr[idx.i] = v; break;
+            }
             case NodeKind::If: {
                 auto& i = static_cast<If&>(s);
                 if (eval(*i.cond).b) execBlock(*i.thenB); else if (i.elseB) exec(*i.elseB);
@@ -145,7 +171,8 @@ private:
             }
             case NodeKind::Print: {
                 if (out_.size() >= 5000) throw RuntimeFail{"output limit", true};
-                out_.push_back(refFormat(eval(*static_cast<Print&>(s).value))); break;
+                Value pv = eval(*static_cast<Print&>(s).value);
+                out_.push_back(pv.type == Type::Str ? strs_[pv.i] : refFormat(pv)); break;
             }
             case NodeKind::ExprStmt: eval(*static_cast<ExprStmt&>(s).expr); break;
             default: break;
@@ -158,6 +185,21 @@ private:
             case NodeKind::IntLit: return Value::Int(static_cast<IntLit&>(e).value);
             case NodeKind::FloatLit: return Value::Float(static_cast<FloatLit&>(e).value);
             case NodeKind::BoolLit: return Value::Bool(static_cast<BoolLit&>(e).value);
+            case NodeKind::StrLit: return newStr(static_cast<StrLit&>(e).value);
+            case NodeKind::NewArray: { auto& n = static_cast<NewArray&>(e); return newArr(e.type, eval(*n.size).i); }
+            case NodeKind::ArrayLit: {
+                auto& a = static_cast<ArrayLit&>(e);
+                Value arr = newArr(e.type, static_cast<int64_t>(a.elems.size()));
+                for (size_t k = 0; k < a.elems.size(); ++k) { Value v = eval(*a.elems[k]); arrs_[arr.i][k] = v; }
+                return arr;
+            }
+            case NodeKind::Index: {
+                auto& x = static_cast<Index&>(e);
+                Value b = eval(*x.base), i = eval(*x.index);
+                auto& arr = arrs_[b.i];
+                if (i.i < 0 || i.i >= static_cast<int64_t>(arr.size())) throw RuntimeFail{"index out of bounds", false};
+                return arr[i.i];
+            }
             case NodeKind::VarRef: return (*env_)[static_cast<VarRef&>(e).sym];
             case NodeKind::Unary: {
                 auto& u = static_cast<Unary&>(e);
@@ -168,12 +210,17 @@ private:
                 if (b.op == "&&") { Value l = eval(*b.lhs); return l.b ? eval(*b.rhs) : l; }
                 if (b.op == "||") { Value l = eval(*b.lhs); return l.b ? l : eval(*b.rhs); }
                 Value l = eval(*b.lhs), r = eval(*b.rhs);
+                if (l.type == Type::Str) {
+                    if (b.op == "+") return newStr(strs_[l.i] + strs_[r.i]);
+                    return Value::Bool((strs_[l.i] == strs_[r.i]) == (b.op == "=="));
+                }
                 return refBinary(b.op, l, r);
             }
             case NodeKind::Call: {
                 auto& c = static_cast<Call&>(e);
                 std::vector<Value> args;
                 for (auto& a : c.args) args.push_back(eval(*a));
+                if (c.builtin && c.name == "len") return Value::Int(args[0].type == Type::Str ? static_cast<int64_t>(strs_[args[0].i].size()) : static_cast<int64_t>(arrs_[args[0].i].size()));
                 if (c.builtin) return refCast(c.name == "to_float", args[0]);
                 return callFunction(*find(c.name), args);
             }

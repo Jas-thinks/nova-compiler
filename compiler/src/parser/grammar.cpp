@@ -13,12 +13,13 @@ ParamsOpt -> Params | eps
 Params -> Params , Param | Param
 Param -> ID : Type
 RetOpt -> -> Type | eps
-Type -> int | float | bool
+Type -> ElemType | ElemType [ ] | string
+ElemType -> int | float | bool
 Block -> { StmtList }
 StmtList -> StmtList Stmt | eps
 Stmt -> VarDecl | Assign | IfStmt | WhileStmt | ReturnStmt | PrintStmt | CallStmt | Block | error ; | error
 VarDecl -> let ID : Type = Expr ;
-Assign -> ID = Expr ;
+Assign -> ID = Expr ; | ID [ Expr ] = Expr ;
 IfStmt -> if ( Expr ) Block ElsePart
 ElsePart -> else Block | else IfStmt | eps
 WhileStmt -> while ( Expr ) Block
@@ -33,8 +34,9 @@ EqExpr -> EqExpr == RelExpr | EqExpr != RelExpr | RelExpr
 RelExpr -> RelExpr < AddExpr | RelExpr <= AddExpr | RelExpr > AddExpr | RelExpr >= AddExpr | AddExpr
 AddExpr -> AddExpr + MulExpr | AddExpr - MulExpr | MulExpr
 MulExpr -> MulExpr * UnaryExpr | MulExpr / UnaryExpr | MulExpr % UnaryExpr | UnaryExpr
-UnaryExpr -> - UnaryExpr | ! UnaryExpr | Primary
-Primary -> INT_LIT | FLOAT_LIT | true | false | ID | Call | ( Expr )
+UnaryExpr -> - UnaryExpr | ! UnaryExpr | Postfix
+Postfix -> Postfix [ Expr ] | Primary
+Primary -> INT_LIT | FLOAT_LIT | STR_LIT | true | false | ID | Call | ( Expr ) | [ Args ] | new ElemType [ Expr ]
 Call -> ID ( ArgsOpt )
 ArgsOpt -> Args | eps
 Args -> Args , Expr | Expr

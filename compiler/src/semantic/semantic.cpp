@@ -14,6 +14,7 @@ public:
         newScope(-1, "global", "", prog_.loc);
         addBuiltin("to_float", {Type::Int}, Type::Float);
         addBuiltin("to_int", {Type::Float}, Type::Int);
+        addBuiltin("len", {Type::Error}, Type::Int);   // polymorphic: string or any array (checked specially in checkCall)
         for (auto& f : prog_.functions) declareFunction(*f);
         const FuncInfo* m = res_.findFunction("main");
         if (!m) {
@@ -191,6 +192,23 @@ private:
                 }
                 break;
             }
+            case NodeKind::IndexAssign: {
+                auto& a = static_cast<IndexAssign&>(s);
+                Symbol* sym = resolveVar(a.name, a.nameLoc);
+                Type it = checkExpr(*a.index), vt = checkExpr(*a.value);
+                if (sym) {
+                    a.sym = sym; sym->reads.push_back(a.nameLoc);
+                    if (!isArrayType(sym->type))
+                        err("Type mismatch", "E-SEM-014", "'" + a.name + "' has type " + typeName(sym->type) + " and cannot be indexed",
+                            "Only arrays support 'x[i] = value'. Strings are immutable.", "Declare an array: let " + a.name + ": int[] = [1, 2, 3];", a.nameLoc);
+                    else if (vt != Type::Error && vt != Type::Void && vt != elemType(sym->type))
+                        err("Type mismatch", "E-SEM-004", "Cannot assign " + std::string(typeName(vt)) + " to an element of " + typeName(sym->type),
+                            "Every element of an array has the array's element type.", std::string("Assign a ") + typeName(elemType(sym->type)) + " value.", a.value->loc);
+                }
+                if (it != Type::Error && it != Type::Int)
+                    err("Type mismatch", "E-SEM-015", std::string("Array index must be int but has type ") + typeName(it), "Indices are integers.", "Use an int expression.", a.index->loc);
+                break;
+            }
             case NodeKind::If: {
                 auto& i = static_cast<If&>(s);
                 expectBool(*i.cond, "If condition");
@@ -223,7 +241,9 @@ private:
             case NodeKind::Print: {
                 auto& p = static_cast<Print&>(s);
                 Type t = checkExpr(*p.value);
-                if (t == Type::Void) { /* already reported */ }
+                if (isArrayType(t))
+                    err("Type mismatch", "E-SEM-016", std::string("Cannot print a value of type ") + typeName(t), "print accepts int, float, bool and string values.",
+                        "Print the elements one by one with a loop.", p.value->loc);
                 break;
             }
             case NodeKind::ExprStmt: checkExpr(*static_cast<ExprStmt&>(s).expr); break;
@@ -249,7 +269,45 @@ private:
 
     Type checkExpr(Expr& e) {
         switch (e.kind) {
-            case NodeKind::IntLit: case NodeKind::FloatLit: case NodeKind::BoolLit: return e.type;
+            case NodeKind::IntLit: case NodeKind::FloatLit: case NodeKind::BoolLit: case NodeKind::StrLit: return e.type;
+            case NodeKind::NewArray: {
+                auto& n = static_cast<NewArray&>(e);
+                Type st = checkExpr(*n.size);
+                if (st != Type::Error && st != Type::Int)
+                    err("Type mismatch", "E-SEM-015", std::string("Array size must be int but has type ") + typeName(st), "The size in 'new T[n]' is an integer.", "Use an int expression.", n.size->loc);
+                return e.type = arrayOf(n.elem);
+            }
+            case NodeKind::ArrayLit: {
+                auto& a = static_cast<ArrayLit&>(e);
+                Type first = Type::Error; bool ok = true;
+                for (size_t k = 0; k < a.elems.size(); ++k) {
+                    Type t = checkExpr(*a.elems[k]);
+                    if (t == Type::Error) { ok = false; continue; }
+                    if (k == 0) first = t;
+                    else if (t != first) {
+                        err("Type mismatch", "E-SEM-004", std::string("Array element has type ") + typeName(t) + " but earlier elements are " + typeName(first),
+                            "All elements of an array literal must have the same type.", "Make the elements the same type.", a.elems[k]->loc);
+                        ok = false;
+                    }
+                }
+                if (ok && first != Type::Error && arrayOf(first) == Type::Error) {
+                    err("Type mismatch", "E-SEM-017", std::string("Arrays of ") + typeName(first) + " are not supported", "Array elements must be int, float or bool.", "Use an element type of int, float or bool.", a.loc);
+                    ok = false;
+                }
+                return e.type = ok ? arrayOf(first) : Type::Error;
+            }
+            case NodeKind::Index: {
+                auto& x = static_cast<Index&>(e);
+                Type bt = checkExpr(*x.base), it = checkExpr(*x.index);
+                if (it != Type::Error && it != Type::Int)
+                    err("Type mismatch", "E-SEM-015", std::string("Array index must be int but has type ") + typeName(it), "Indices are integers.", "Use an int expression.", x.index->loc);
+                if (bt == Type::Error) return e.type = Type::Error;
+                if (!isArrayType(bt)) {
+                    err("Type mismatch", "E-SEM-014", std::string("Cannot index a value of type ") + typeName(bt), "Only arrays can be indexed with '[i]'. Use len(s) for string length.", "Index an array.", x.loc);
+                    return e.type = Type::Error;
+                }
+                return e.type = elemType(bt);
+            }
             case NodeKind::VarRef: {
                 auto& v = static_cast<VarRef&>(e);
                 Symbol* s = resolveVar(v.name, v.loc);
@@ -290,6 +348,12 @@ private:
             return bad(b, l, r, "'" + op + "' requires two bool operands.", "Compare the operands first, e.g. (x > 0) " + op + " (y > 0).");
         }
         if (l != r) return bad(b, l, r, "Both operands of '" + op + "' must have the same type.", sugg.empty() ? "Make both operands the same type." : sugg);
+        if (l == Type::Str) {
+            if (op == "+") return b.type = Type::Str;
+            if (eq) return b.type = Type::Bool;
+            return bad(b, l, r, "Strings support only '+' (concatenation), '==' and '!='.", "Use '+' to join strings.");
+        }
+        if (isArrayType(l)) return bad(b, l, r, "Arrays cannot be combined or compared with operators.", "Compare or combine elements individually.");
         if (arith) {
             if (numeric(l)) return b.type = l;
             return bad(b, l, r, "Arithmetic needs int or float operands.", "Use numeric operands.");
@@ -327,6 +391,14 @@ private:
             return c.type = Type::Error;
         }
         c.callee = f; f->callCount++; c.builtin = f->builtin;
+        if (f->builtin && f->name == "len") {
+            if (c.args.size() != 1) err("Wrong argument count", "E-SEM-007", "Function 'len' expects 1 argument(s) but " + std::to_string(c.args.size()) + " were given",
+                                        "len(x) returns the length of a string or array.", "Pass exactly one string or array.", c.loc);
+            else if (at[0] != Type::Error && at[0] != Type::Str && !isArrayType(at[0]))
+                err("Type mismatch", "E-SEM-004", std::string("Argument 1 of 'len' has type ") + typeName(at[0]) + " but a string or array is required",
+                    "len works on strings and arrays.", "Pass a string or an array.", c.args[0]->loc);
+            return c.type = Type::Int;
+        }
         if (c.args.size() != f->params.size()) {
             std::string sig = f->name + "(";
             for (size_t i = 0; i < f->params.size(); ++i) sig += (i ? ", " : "") + std::string(typeName(f->params[i]));

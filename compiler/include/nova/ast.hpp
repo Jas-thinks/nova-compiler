@@ -8,11 +8,16 @@
 
 namespace nova {
 
-enum class Type { Int, Float, Bool, Void, Error };
+enum class Type { Int, Float, Bool, Void, Error, Str, ArrInt, ArrFloat, ArrBool };
 const char* typeName(Type t);
+inline bool isArrayType(Type t) { return t == Type::ArrInt || t == Type::ArrFloat || t == Type::ArrBool; }
+inline bool isRefType(Type t) { return t == Type::Str || isArrayType(t); }      // heap-allocated, passed by reference
+inline Type elemType(Type t) { return t == Type::ArrInt ? Type::Int : t == Type::ArrFloat ? Type::Float : t == Type::ArrBool ? Type::Bool : Type::Error; }
+inline Type arrayOf(Type t) { return t == Type::Int ? Type::ArrInt : t == Type::Float ? Type::ArrFloat : t == Type::Bool ? Type::ArrBool : Type::Error; }
 
 enum class NodeKind { Program, Function, Param, Block, VarDecl, Assign, If, While, Return, Print, ExprStmt,
-                      IntLit, FloatLit, BoolLit, VarRef, Binary, Unary, Call };
+                      IntLit, FloatLit, BoolLit, VarRef, Binary, Unary, Call,
+                      StrLit, ArrayLit, NewArray, Index, IndexAssign };
 const char* nodeKindName(NodeKind k);
 
 struct Symbol;
@@ -46,6 +51,15 @@ struct FloatLit : Expr { double value = 0; std::string text; FloatLit() : Expr(N
     std::string label() const override { return "FloatLit " + text; } };
 struct BoolLit : Expr { bool value = false; BoolLit() : Expr(NodeKind::BoolLit) { type = Type::Bool; }
     std::string label() const override { return std::string("BoolLit ") + (value ? "true" : "false"); } };
+struct StrLit : Expr { std::string value; StrLit() : Expr(NodeKind::StrLit) { type = Type::Str; }
+    std::string label() const override { return "StrLit \"" + value + "\""; } };
+struct ArrayLit : Expr { std::vector<ExprP> elems; ArrayLit() : Expr(NodeKind::ArrayLit) {}
+    std::vector<Node*> children() override { std::vector<Node*> v; for (auto& a : elems) v.push_back(a.get()); return v; } };
+struct NewArray : Expr { Type elem = Type::Int; ExprP size; NewArray() : Expr(NodeKind::NewArray) {}
+    std::vector<Node*> children() override { return {size.get()}; }
+    std::string label() const override { return std::string("NewArray ") + typeName(elem) + "[]"; } };
+struct Index : Expr { ExprP base, index; Index() : Expr(NodeKind::Index) {}
+    std::vector<Node*> children() override { return {base.get(), index.get()}; } };
 struct VarRef : Expr { std::string name; Symbol* sym = nullptr; VarRef() : Expr(NodeKind::VarRef) {}
     std::string label() const override { return "VarRef " + name; } };
 struct Binary : Expr { std::string op; ExprP lhs, rhs; Binary() : Expr(NodeKind::Binary) {}
@@ -68,6 +82,9 @@ struct VarDecl : Stmt { std::string name; SourceLoc nameLoc; Type declType = Typ
 struct Assign : Stmt { std::string name; SourceLoc nameLoc; ExprP value; Symbol* sym = nullptr; Assign() : Stmt(NodeKind::Assign) {}
     std::vector<Node*> children() override { return {value.get()}; }
     std::string label() const override { return "Assign " + name; } };
+struct IndexAssign : Stmt { std::string name; SourceLoc nameLoc; ExprP index, value; Symbol* sym = nullptr; IndexAssign() : Stmt(NodeKind::IndexAssign) {}
+    std::vector<Node*> children() override { return {index.get(), value.get()}; }
+    std::string label() const override { return "IndexAssign " + name + "[]"; } };
 struct If : Stmt { ExprP cond; std::unique_ptr<Block> thenB; StmtP elseB; If() : Stmt(NodeKind::If) {}
     std::vector<Node*> children() override { std::vector<Node*> v{cond.get(), thenB.get()}; if (elseB) v.push_back(elseB.get()); return v; } };
 struct While : Stmt { ExprP cond; std::unique_ptr<Block> body; While() : Stmt(NodeKind::While) {}

@@ -20,19 +20,20 @@ export function registerNova() {
     indentationRules: { increaseIndentPattern: /\{[^}]*$/, decreaseIndentPattern: /^\s*\}/ },
   })
   monaco.languages.setMonarchTokensProvider('nova', {
-    keywords: ['fn', 'let', 'if', 'else', 'while', 'return', 'print'],
-    types: ['int', 'float', 'bool'],
-    builtins: ['to_float', 'to_int'],
+    keywords: ['fn', 'let', 'if', 'else', 'while', 'return', 'print', 'new'],
+    types: ['int', 'float', 'bool', 'string'],
+    builtins: ['to_float', 'to_int', 'len'],
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
         [/[a-zA-Z_]\w*/, { cases: { '@keywords': 'keyword', '@types': 'type', '@builtins': 'support.function', 'true|false': 'constant', '@default': 'identifier' } }],
+        [/"(?:[^"\\]|\\.)*"/, 'string'],
         [/\d+\.\d+/, 'number.float'],
         [/\d+/, 'number'],
         [/->|==|!=|<=|>=|&&|\|\|/, 'operator'],
         [/[+\-*/%<>=!]/, 'operator'],
-        [/[{}()]/, 'delimiter.bracket'],
+        [/[{}()\[\]]/, 'delimiter.bracket'],
         [/[;,:]/, 'delimiter'],
       ],
       comment: [[/[^/*]+/, 'comment'], [/\*\//, 'comment', '@pop'], [/[/*]/, 'comment']],

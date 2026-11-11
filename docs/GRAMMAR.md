@@ -10,12 +10,13 @@ ParamsOpt   -> Params | eps
 Params      -> Params , Param | Param
 Param       -> ID : Type
 RetOpt      -> -> Type | eps
-Type        -> int | float | bool
+Type        -> ElemType | ElemType [ ] | string
+ElemType    -> int | float | bool
 Block       -> { StmtList }
 StmtList    -> StmtList Stmt | eps
 Stmt        -> VarDecl | Assign | IfStmt | WhileStmt | ReturnStmt | PrintStmt | CallStmt | Block
 VarDecl     -> let ID : Type = Expr ;
-Assign      -> ID = Expr ;
+Assign      -> ID = Expr ; | ID [ Expr ] = Expr ;
 IfStmt      -> if ( Expr ) Block ElsePart
 ElsePart    -> else Block | else IfStmt | eps
 WhileStmt   -> while ( Expr ) Block
@@ -30,8 +31,9 @@ EqExpr      -> EqExpr == RelExpr | EqExpr != RelExpr | RelExpr
 RelExpr     -> RelExpr < AddExpr | RelExpr <= AddExpr | RelExpr > AddExpr | RelExpr >= AddExpr | AddExpr
 AddExpr     -> AddExpr + MulExpr | AddExpr - MulExpr | MulExpr
 MulExpr     -> MulExpr * UnaryExpr | MulExpr / UnaryExpr | MulExpr % UnaryExpr | UnaryExpr
-UnaryExpr   -> - UnaryExpr | ! UnaryExpr | Primary
-Primary     -> INT_LIT | FLOAT_LIT | true | false | ID | Call | ( Expr )
+UnaryExpr   -> - UnaryExpr | ! UnaryExpr | Postfix
+Postfix     -> Postfix [ Expr ] | Primary
+Primary     -> INT_LIT | FLOAT_LIT | STR_LIT | true | false | ID | Call | ( Expr ) | [ Args ] | new ElemType [ Expr ]
 Call        -> ID ( ArgsOpt )
 ArgsOpt     -> Args | eps
 Args        -> Args , Expr | Expr
@@ -57,3 +59,11 @@ Args        -> Args , Expr | Expr
 | comments | `// …` to end of line; `/* … */` (not nested) |
 
 Lexical errors reported: invalid character, lone `&` / `|`, unterminated block comment, `3.` (digits required after the point), `12abc`, integer literal too large.
+
+## Arrays and strings (added)
+
+* `int[]`, `float[]`, `bool[]` are heap arrays (reference semantics, bounds-checked, zero-initialised by `new int[n]`); literals `[1, 2, 3]` (non-empty, homogeneous); `a[i]`, `a[i] = v;`; builtin `len(x)` for arrays and strings.
+* `string` is an immutable heap string: literals with `\n \t \\ \"` escapes, `+` (concatenation), `==`, `!=`, `len(s)`, `print(s)`. No indexing or mutation.
+* No garbage collector: allocations live until the program ends and are capped (4M cells) so runaway programs fail deterministically (VM) instead of exhausting memory.
+* Runtime traps (identical in VM, reference interpreter and native code): `index out of bounds`, `negative array size`.
+* Grammar size is now 432 LR(1) states, still conflict-free.

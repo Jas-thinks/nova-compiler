@@ -670,3 +670,49 @@ TEST(analysis, jsonIncludesAllArtifacts) {
     std::string j = resultToJson(*r, co).dump();
     for (const char* k : {"\"analysis\"", "\"blocks\"", "\"liveness\"", "\"reachingDefinitions\"", "\"ssa\"", "\"loopHeader\":true", "\"history\""}) CHECK(j.find(k) != std::string::npos);
 }
+
+// ------------------------------------------------------------------ arrays and strings
+TEST(heap, arraysAndStringsRunIdenticallyInAllEngines) {
+    std::string src = wrap("let a: int[] = [3, 4, 5]; a[1] = 10; print(a[0] + a[1] + a[2]); print(len(a));\n"
+                           "let b: float[] = new float[2]; b[1] = 1.5; print(b[1] + b[0]);\n"
+                           "let s: string = \"ab\" + \"cd\"; print(s); print(len(s)); print(s == \"abcd\"); print(s != \"abcd\");");
+    auto r = build(src);
+    CHECK(r->success);
+    CHECK_EQ(joinOut(r->runBaseline.output), std::string("18\n3\n1.5\nabcd\n4\ntrue\nfalse\n"));
+    CHECK(r->runBaseline.output == r->runOptimized.output);
+    CHECK(r->runBaseline.output == r->reference.output);
+}
+TEST(heap, boundsAndSizeTraps) {
+    auto r = build(wrap("let a: int[] = [1]; print(a[1]);"));
+    CHECK(!r->runBaseline.ok); CHECK_EQ(r->runBaseline.error, std::string("index out of bounds"));
+    CHECK_EQ(r->reference.error, std::string("index out of bounds"));
+    r = build(wrap("let n: int = 0 - 1; let a: int[] = new int[n]; print(len(a));"));
+    CHECK_EQ(r->runBaseline.error, std::string("negative array size"));
+    CHECK_EQ(r->runOptimized.error, std::string("negative array size"));
+}
+TEST(heap, arraysArePassedByReference) {
+    std::string src = "fn fill(a: int[]) { a[0] = 42; }\nfn main() { let a: int[] = new int[1]; fill(a); print(a[0]); }\n";
+    CHECK_EQ(runOut(src), std::string("42\n"));
+}
+TEST(heap, typeErrors) {
+    CHECK(hasDiag(*build(wrap("let a: int[] = [1, 2.5];"), OptConfig(), false), "E-SEM-004"));       // mixed element types
+    CHECK(hasDiag(*build(wrap("let a: int[] = [1]; a[true] = 2;"), OptConfig(), false), "E-SEM-015")); // non-int index
+    CHECK(hasDiag(*build(wrap("let a: int[] = [1]; a[0] = 1.5;"), OptConfig(), false), "E-SEM-004"));  // wrong element type
+    CHECK(hasDiag(*build(wrap("let x: int = 1; print(x[0]);"), OptConfig(), false), "E-SEM-014"));    // indexing a non-array
+    CHECK(hasDiag(*build(wrap("let a: int[] = [1]; print(a);"), OptConfig(), false), "E-SEM-016"));   // printing an array
+    CHECK(hasDiag(*build(wrap("let s: string = \"a\" - \"b\";"), OptConfig(), false), "E-SEM-005"));  // unsupported string operator
+    CHECK(hasDiag(*build(wrap("print(len(3));"), OptConfig(), false), "E-SEM-004"));                  // len of an int
+}
+TEST(heap, lexerStringLiterals) {
+    auto r = lex("\"a\\n\\\"b\\\\\"");
+    CHECK(!r.diagnostics.hasErrors());
+    CHECK(r.tokens[0].cat == TokCat::StringLiteral);
+    CHECK_EQ(r.tokens[0].lexeme, std::string("a\n\"b\\"));
+    CHECK(lex("\"unterminated").diagnostics.hasErrors());
+}
+TEST(heap, stringOperationsSurviveOptimization) {
+    // constant folding must not fold string comparisons/concatenations into wrong values
+    std::string src = wrap("let a: string = \"x\"; let b: string = \"y\"; print(a == b); print(a + b == \"xy\"); print(\"p\" == \"p\");");
+    CHECK_EQ(runOut(src), std::string("false\ntrue\ntrue\n"));
+    CHECK_EQ(runOut(src, OptConfig::none()), std::string("false\ntrue\ntrue\n"));
+}

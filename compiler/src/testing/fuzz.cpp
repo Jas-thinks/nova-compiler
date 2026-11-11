@@ -1,5 +1,6 @@
 // Random NOVA program generator + differential fuzz driver.
 #include <fstream>
+#include <map>
 #include <random>
 #include <sstream>
 #include "nova/pipeline.hpp"
@@ -31,6 +32,7 @@ private:
     std::vector<std::vector<FVar>> scopes_;
     std::vector<FSig> funcs_;
     int counter_ = 0;
+    std::map<std::string, int> arrLen_;   // int-array variable -> length (so generated indices are in range, except deliberate traps)
 
     int pick(int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(rng_); }
     bool chance(int pct) { return pick(1, 100) <= pct; }
@@ -84,9 +86,63 @@ private:
         indent(depth); os_ << "}";
     }
 
+    std::string strLit() {
+        static const char* lits[] = {"", "a", "ab", "hello", "x y", "NOVA", "tab\\there", "q\\\"q"};
+        return std::string("\"") + lits[pick(0, 7)] + "\"";
+    }
+    std::string strExpr(int d) {
+        auto vs = visible(Type::Str, false);
+        if (d <= 0 || vs.empty() || chance(35)) return strLit();
+        const std::string& v = vs[pick(0, (int)vs.size() - 1)]->name;
+        return chance(50) ? v + " + " + strLit() : strLit() + " + " + v;
+    }
+    // Array / string statements (heap features). Returns true when it emitted a statement.
+    bool heapStmt(int depth) {
+        int k = pick(1, 100);
+        auto arrs = visible(Type::ArrInt, false);
+        if (k <= 25 || (arrs.empty() && k <= 60)) {            // declare an int array (literal or new + stores)
+            std::string n = fresh("a");
+            int len = pick(1, 4);
+            if (chance(50)) {
+                os_ << "let " << n << ": int[] = [";
+                for (int i = 0; i < len; ++i) os_ << (i ? ", " : "") << expr(Type::Int, 1);
+                os_ << "];\n";
+            } else os_ << "let " << n << ": int[] = new int[" << len << "];\n";
+            scopes_.back().push_back({n, Type::ArrInt, false}); arrLen_[n] = len;
+            return true;
+        }
+        if (k <= 50 && !arrs.empty()) {                          // element store (3%: deliberately out of range -> runtime trap)
+            const std::string& n = arrs[pick(0, (int)arrs.size() - 1)]->name;
+            int idx = chance(3) ? arrLen_[n] : pick(0, arrLen_[n] - 1);
+            os_ << n << "[" << idx << "] = " << expr(Type::Int, 2) << ";\n";
+            return true;
+        }
+        if (k <= 65 && !arrs.empty()) {                          // print an element / the length
+            const std::string& n = arrs[pick(0, (int)arrs.size() - 1)]->name;
+            if (chance(30)) os_ << "print(len(" << n << "));\n";
+            else os_ << "print(" << n << "[" << pick(0, arrLen_[n] - 1) << "]);\n";
+            return true;
+        }
+        if (k <= 85) {                                           // declare a string
+            std::string n = fresh("s");
+            os_ << "let " << n << ": string = " << strExpr(2) << ";\n";
+            scopes_.back().push_back({n, Type::Str, true});
+            return true;
+        }
+        auto ss = visible(Type::Str, false);
+        if (ss.empty()) return false;
+        const std::string& n = ss[pick(0, (int)ss.size() - 1)]->name;
+        int w = pick(0, 2);
+        if (w == 0) os_ << "print(" << n << ");\n";
+        else if (w == 1) os_ << "print(len(" << n << "));\n";
+        else os_ << "print(" << n << (chance(50) ? " == " : " != ") << strExpr(1) << ");\n";
+        return true;
+    }
+
     void stmt(int depth, Type ret, int loopDepth) {
         int k = pick(1, 100);
         indent(depth);
+        if (chance(14) && heapStmt(depth)) return;
         if (k <= 34) {                          // let
             Type t = randType(); std::string n = fresh("v");
             os_ << "let " << n << ": " << tn(t) << " = " << expr(t, 3) << ";\n";
@@ -143,6 +199,11 @@ private:
         if (t == Type::Int) {
             int k = pick(1, 100);
             auto vs = visible(Type::Int, false);
+            auto arrs = visible(Type::ArrInt, false);
+            if (d > 0 && !arrs.empty() && chance(8)) {
+                const std::string& n = arrs[pick(0, (int)arrs.size() - 1)]->name;
+                return chance(25) ? "len(" + n + ")" : n + "[" + std::to_string(pick(0, arrLen_[n] - 1)) + "]";
+            }
             if (d <= 0 || k <= 15) return chance(50) || vs.empty() ? "(" + intLit() + ")" : vs[pick(0, (int)vs.size() - 1)]->name;
             if (k <= 30 && !vs.empty()) return vs[pick(0, (int)vs.size() - 1)]->name;
             if (k <= 78) {
