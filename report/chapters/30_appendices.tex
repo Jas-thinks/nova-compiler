@@ -1,0 +1,87 @@
+\chapter{User manual}
+\label{app:manual}
+
+\section{Requirements}
+Linux or macOS-like shell; \code{g++} with C++17, \code{cmake} $\geq$ 3.16, \code{python3} $\geq$ 3.11 with \code{venv}, \code{node} $\geq$ 18 with \code{npm}, and \code{gcc} (used as assembler and linker for the native back end). For the SQL differential test no extra install is needed: Python's standard \code{sqlite3} is the oracle.
+
+\section{Getting started}
+\begin{lstlisting}[language=bash,style=tiny]
+git clone <repository> nova && cd nova
+./scripts/dev.sh              # builds the compiler, installs dependencies, starts backend + studio
+# open the printed URL (default http://localhost:5173)
+./scripts/serve.sh            # alternative: one process serving the built studio on http://localhost:8000
+\end{lstlisting}
+
+\section{Using the studio}
+\begin{enumerate}
+  \item Open \textbf{Compiler Playground}, pick an example, press \textbf{Compile} (Ctrl+Enter) or \textbf{Run} (Ctrl+Shift+Enter).
+  \item Click the stages in the pipeline bar, or open \emph{Lexical}, \emph{Syntax}, \emph{AST}, \emph{Semantic}, \emph{Intermediate Repr.}, \emph{CFG \& Data-flow}, \emph{Optimization Lab}, \emph{Target Code (VM)} and \emph{Native x86-64} from the menu.
+  \item In \emph{Optimization Lab} switch passes off and on and watch the rewrite history and the measured effect.
+  \item In \emph{Debugger} set breakpoints by clicking line numbers; step forward and \emph{back}.
+  \item Break a program on purpose and open \textbf{AI Assistant}: apply a verified fix, or press \emph{Auto-fix all}; for a runtime trap use \emph{Runtime analysis}.
+  \item Open \textbf{SQL Compiler}, pick an example script, press \textbf{Run} (Ctrl+Enter) and inspect the \emph{plan}, \emph{optimizer}, \emph{bytecode} and \emph{ast} tabs.
+\end{enumerate}
+
+\section{Command-line use}
+\begin{lstlisting}[language=bash,style=tiny]
+novac=compiler/build/novac
+$novac compile --run < examples/02_factorial.nova | jq .execution     # full JSON report
+$novac compile --passes=constant_folding,dce < prog.nova               # choose passes
+$novac asm < prog.nova                                                 # x86-64 assembly
+scripts/nova-native.sh prog.nova -o prog && ./prog                     # native executable
+$novac sql < examples/sql/01_orders_report.sql | jq '.statements[-1].rows'
+$novac fuzz --count=1000 --seed=1                                      # differential fuzz
+$novac grammar | jq .states                                            # LR(1) tables as JSON
+\end{lstlisting}
+
+\section{HTTP API examples}
+\begin{lstlisting}[language=bash,style=tiny]
+curl -s localhost:8000/api/compile -H 'content-type: application/json' \
+     -d '{"source":"fn main(){ print(6*7); }","run":true}' | jq .execution.optimized.output
+curl -s localhost:8000/api/sql -H 'content-type: application/json' \
+     -d '{"script":"CREATE TABLE t(a INT); INSERT INTO t VALUES (1),(2); SELECT SUM(a) FROM t;"}'
+curl -s localhost:8000/api/suggest -H 'content-type: application/json' \
+     -d '{"source":"fn main(){ let x: int = 1.5; }"}' | jq '.fixes[0].title'
+\end{lstlisting}
+
+\section{Language server in an editor}
+Run \code{scripts/nova-lsp.sh} as an LSP server on stdio for files with the extension \code{.nova}. A minimal VS Code client is in \code{editors/vscode} (run \code{npm install}, open the folder, press F5, and set \code{nova.serverScript} to the absolute path of the script).
+
+\section{Optional: enabling the LLM assistant}
+Export \code{ANTHROPIC\_API\_KEY} before starting the backend; \code{NOVA\_LLM\_MODEL} selects the model. Without a key the \emph{Ask Claude} tab reports that the model is not configured and everything else works.
+
+\section{Running the verification}
+See Listing~\ref{lst:verifycmds}. \code{scripts/test.sh} runs everything; \code{scripts/sanitize.sh} adds the sanitizer builds; \code{scripts/bench.sh} reproduces the performance table.
+
+\section{Troubleshooting}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}p{0.34\textwidth}X@{}}\toprule
+\textbf{Symptom} & \textbf{Fix}\\ \midrule
+``Backend offline'' in the studio & start it with \code{scripts/dev.sh}; if ports are busy set \code{NOVA\_API\_PORT} and \code{NOVA\_WEB\_PORT}\\
+\code{compiler binary not found} (HTTP 503) & run \code{scripts/build.sh}\\
+Native build fails & install \code{gcc}; check that the target is x86-64 Linux\\
+Native/Compiler Explorer C viewer unavailable & the viewer needs \code{gcc} or \code{clang} on \code{PATH}\\
+\code{ModuleNotFoundError} in backend tests & use the project's virtual environment: \code{backend/.venv/bin/python -m pytest}\\ \bottomrule
+\end{tabularx}
+\end{table}
+
+\chapter{Diagnostic catalogue}
+Every diagnostic has a stable code, a phase, an exact source range, an explanation and, where possible, a suggestion. The table lists all \NumDiagCodes{} codes of the compilers (generated from the source). Codes starting with \code{W} are warnings; \code{E-ICE} marks an internal compiler error (a bug report, never expected).
+
+\begingroup\small
+\input{gen/diag}
+\endgroup
+\captionof{table}{All diagnostic codes.}
+
+\chapter{Example programs and their output}
+The \NumExamples{} programs shipped in \code{examples/}, each with the real compiler result: the program output for valid programs, the diagnostics for the error examples, and the runtime trap for the runtime-error examples.
+
+\input{gen/examples}
+
+\chapter{Benchmark raw output}\label{app:bench}
+Raw output of \code{scripts/bench.sh} from the run behind Chapter~\ref{ch:perf}:
+
+\input{gen/bench_raw}
+
+\chapter{Specifications of the VM instruction set}
+The complete instruction set is listed in Chapter~\ref{ch:backends} (generated from the compiler); the language grammar is Listing~\ref{lst:grammar}; the SQL statement summary is Listing~\ref{lst:sqlgrammar}.

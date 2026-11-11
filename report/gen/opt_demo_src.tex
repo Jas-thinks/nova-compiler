@@ -1,0 +1,19 @@
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let base: int = 4 * 8 + 2;          // folds to 34
+    let scale: int = 2;
+    let x: int = base * scale + 0;      // x*1/+0 identities
+    let y: int = base * scale;          // common subexpression with x
+    let unused: int = 7 * 6;            // dead store
+    let debug: bool = false;
+
+    if (debug) {                        // branch is never taken
+        print(unused);
+    }
+
+    let t: int = (x + y) * 2;           // strength reduction
+    print(t);
+    print(x - x);
+    print(y % 1);
+}
+\end{lstlisting}

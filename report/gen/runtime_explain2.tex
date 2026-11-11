@@ -1,0 +1,5 @@
+\begin{lstlisting}[]
+error      : stack overflow: call depth exceeded 512
+root cause : Call depth exceeded the limit while running forever -- the recursion never reaches a base case for these arguments.
+suggestion : Add or fix the base case (e.g. if (n <= 0) { return ... }) and make sure the argument moves toward it on every call.
+\end{lstlisting}

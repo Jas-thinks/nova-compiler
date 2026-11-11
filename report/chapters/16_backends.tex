@@ -1,0 +1,127 @@
+\chapter{The back ends: bytecode VM and native x86-64}
+\label{ch:backends}
+
+NOVA has \emph{two} execution paths for the same optimized IR: a portable bytecode virtual machine (easy to inspect and debug) and a native x86-64 code generator (fast). Having both is not redundancy --- each is the other's test oracle (Chapter~\ref{ch:verify}).
+
+\section{Stack bytecode and the virtual machine}
+\subsection{Instruction set}
+The VM is a stack machine with \NumOpcodes{} opcodes. Each function has numbered local \emph{slots}; parameters occupy the first slots; temporaries get slots of their own. Program execution starts in a two-instruction \emph{entry stub}: \verb|CALL main; HALT|.
+
+\begingroup\small
+\input{gen/isa}
+\endgroup
+\captionof{table}{The complete VM instruction set (generated from the compiler).}
+
+\subsection{From IR to bytecode}
+Translation is direct: an IR instruction \verb|t = a + b| becomes \verb|LOAD a; LOAD b; ADD; STORE t| (constants use \code{PUSH}); a conditional jump becomes \code{LOAD cond; JZ target}; labels are resolved to addresses in a second pass; string literals go into a constant pool referenced by \code{PUSHS}; string operators use dedicated opcodes (\code{SCAT}, \code{SEQ}); array intrinsics map to \code{NEWARR}/\code{ALOAD}/\code{ASTORE}/\code{ALEN}.
+
+\subsection{Execution model}
+Each call creates a \emph{frame} holding its locals and its operand stack. The VM records the line of the \code{CALL} that created each frame, enforces a call-depth limit of 512 (``stack overflow'') and a step limit, and caps output at 5{,}000 lines. Arithmetic is performed by a single shared function (\code{evalBin}) that the optimizer's constant folder also uses, so compile-time and run-time arithmetic cannot disagree.
+
+\subsection{Static verification}
+Like the JVM's bytecode verifier, \code{verifyBytecode} checks a program \emph{before} it runs: jump targets lie inside the function, slot and function indices are valid, call arity matches, every function ends in a terminator, and --- by abstract interpretation of the operand-stack depth over the control-flow graph --- depths are non-negative and consistent at every merge point, with returns leaving exactly the expected number of values.
+
+\subsection{The time-travel debugger}
+With tracing enabled the VM records a \emph{snapshot} before each instruction (instruction pointer, call stack with locals and operand stacks, output count, a text description of the previous step). The debugger service replays this recording, which makes \emph{backward} stepping trivial: moving backwards is just moving a cursor. It supports breakpoints on source lines, step-in, step-over, step-by-line, continue and seek.
+
+\begin{bugbox}[A real bug found while building the assistant]
+Tracing copied the \emph{entire call stack} at every step. For deeply recursive programs this needs gigabytes: running the shipped example \texttt{r02\_stack\_overflow} with tracing crashed the compiler with \texttt{std::bad\_alloc}, which would have broken the debugger on exactly the example meant to demonstrate stack overflow. The fix gives the recorder a memory budget (at most 300{,}000 recorded frames) while \emph{always} keeping the terminal snapshot, so the failing state stays inspectable. Two regression tests cover it.
+\end{bugbox}
+
+\shot{ui_debugger}{The debugger page: source with breakpoints, instruction pointer, call stack with locals and operand stack; back-stepping replays the recorded trace.}
+
+\section{Heap: strings and arrays}
+Strings and arrays are heap objects referenced by a handle (VM) or a pointer (native). In native code both share one layout so that \code{len} is a single load:
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\sffamily\small]
+  \node[anchor=east] at (-0.2,0.4) {array \texttt{int[3]}};
+  \foreach \i/\t in {0/{len = 3},1/{[0]},2/{[1]},3/{[2]}}{\node[draw=nova,fill=novalight,minimum width=19mm,minimum height=8mm] at (\i*2,0.4) {\t};}
+  \node[lab] at (0,-0.3) {offset 0}; \node[lab] at (2,-0.3) {8}; \node[lab] at (4,-0.3) {16}; \node[lab] at (6,-0.3) {24};
+  \node[anchor=east] at (-0.2,-1.6) {string \texttt{"hi"}};
+  \node[draw=teal,fill=teal!10,minimum width=19mm,minimum height=8mm] at (0,-1.6) {len = 2};
+  \node[draw=teal,fill=teal!10,minimum width=19mm,minimum height=8mm] at (2,-1.6) {'h'};
+  \node[draw=teal,fill=teal!10,minimum width=19mm,minimum height=8mm] at (3.9,-1.6) {'i'};
+  \node[lab] at (7.6,-0.2) {8-byte cells; floats stored as raw bits};
+  \node[lab] at (6.4,-1.6) {bytes (no terminator needed)};
+\end{tikzpicture}
+\caption{Native heap object layout: an 8-byte length followed by the payload. Bounds checking is \texttt{cmpq (\%rax),\%rcx; jb ok} --- a single unsigned comparison covers both negative and too-large indices.}
+\end{figure}
+
+There is no garbage collector: objects live until the program exits and total allocation is capped (4{,}194{,}304 cells), so a runaway program fails with a deterministic ``heap limit exceeded'' instead of exhausting memory.
+
+\section{Native x86-64 code generation}
+\subsection{From IR to assembly}
+The generator (\code{compiler/src/codegen/x86.cpp}) emits AT\&T-syntax assembly following the System V ABI conventions where they matter. Its design choices:
+
+\begin{itemize}
+  \item \textbf{Uniform values.} Every value is a raw 64-bit pattern: integers and booleans (0/1) as themselves, floats as IEEE-754 bits, heap objects as pointers. A single \code{movq} moves any of them.
+  \item \textbf{Stack homes.} Each IR local and temporary has an 8-byte home below the frame pointer, assigned once per function.
+  \item \textbf{Internal calling convention.} Arguments are pushed right-to-left, the callee reads them from \verb|16(%rbp)| upward, and the result is returned in \code{\%rax}. The caller pads the stack so \code{\%rsp} is 16-byte aligned at every \code{call} --- required because the callee may call libc (\code{printf}).
+  \item \textbf{Exact semantics.} Integer division tests for zero (calling the runtime trap), and special-cases divisor $-1$ to avoid the hardware \emph{integer overflow} fault on \code{INT\_MIN / -1}; comparisons of floats use \code{ucomisd} with operand order chosen so that NaN yields false for \code{<, <=, >, >=, ==} and true for \code{!=} (the parity flag is tested for equality); \code{to\_int} calls a saturating runtime helper; float negation flips the sign bit with \code{btcq \$63}.
+  \item \textbf{Strings} are emitted into \code{.rodata} as \verb|.quad length; .byte \ldots|; concatenation and equality call runtime functions.
+\end{itemize}
+
+\subsection{The C runtime}
+A 66-line C file (\code{compiler/runtime/nova\_rt.c}) is linked into every native program. It provides output formatting identical to the VM (booleans as \code{true}/\code{false}; floats with 15 significant digits and a trailing \code{.0}), the traps \code{div\_zero}, \code{mod\_zero}, \code{oob}, negative-size and heap-limit (each prints \texttt{runtime error: \ldots} to standard error and exits with status 1), \code{newarr}, string concatenation and equality, and \code{main}, which installs a \code{SIGSEGV} handler on an alternate stack so that runaway recursion becomes a clean ``stack overflow'' trap.
+
+\subsection{Building a native program}
+\begin{lstlisting}[language=bash,style=tiny,caption={\texttt{scripts/nova-native.sh} in essence.},label={lst:native}]
+novac asm --passes=all < prog.nova > prog.s          # NOVA -> optimized IR -> x86-64 assembly
+gcc -O1 -o prog prog.s compiler/runtime/nova_rt.c -lm   # assemble + link with the runtime
+./prog
+\end{lstlisting}
+\code{gcc} is used only as an assembler and linker; it never sees NOVA's IR or does any optimization of NOVA code beyond what the assembler does.
+
+\section{Register allocation by linear scan}\label{sec:regalloc}
+\subsection{The problem}
+In the baseline translation every operation loads operands from stack memory, computes in \code{\%rax} and stores the result back. Memory is far slower than registers, and loop-carried dependencies through memory (store, then reload on the next iteration) lengthen the critical path. Register allocation keeps the \emph{hottest-by-lifetime} values in registers.
+
+\subsection{Algorithm}
+\begin{enumerate}
+  \item \textbf{Liveness.} A per-instruction backward data-flow gives, for each IR variable, the set of instructions where it is live (live-in/live-out sets, iterated to a fixed point over the control-flow graph including loop back edges).
+  \item \textbf{Intervals.} Each variable gets one interval $[\mathrm{start},\mathrm{end}]$: from its first definition or live-in position to its last use or live-out position. (One interval per variable, without ``holes'', is simple and always conservative.)
+  \item \textbf{Scan.} Sort intervals by start. Keep an \emph{active} list. For each new interval: expire intervals that ended before it starts, returning their registers to the free pool; if a register is free take it; otherwise compare with the active interval that \emph{ends furthest away} and spill whichever of the two ends later (Poletto \& Sarkar).
+  \item \textbf{Register pool.} The five callee-saved registers \code{\%rbx}, \code{\%r12}--\code{\%r15}. Callee-saved registers survive calls (including calls into libc), so no save/restore around call sites is needed. \emph{Floats are not allocated}: the System V ABI has no callee-saved SSE registers.
+  \item \textbf{Frame.} A function saves the callee-saved registers it uses in its frame in the prologue and restores them in the epilogue of every return.
+\end{enumerate}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=0.9cm,y=0.75cm,font=\sffamily\small]
+  \draw[->,thick] (0,0) -- (13.5,0) node[right]{\small instruction index};
+  \foreach \x/\l in {1/{0},4/{5},7/{10},10/{15},13/{20}}{\draw (\x,0.1)--(\x,-0.1) node[below,lab]{\l};}
+  \foreach \y/\n/\s/\e/\c in {1/n/1/13/nova,2/s/2.5/11/nova,3/i/2.5/10/teal,4/t1/4/5/amber,5/t2/6/7.5/amber,6/t3/8/9/amber}{
+    \node[anchor=east] at (0.7,\y) {\texttt{\n}};
+    \fill[\c!70,rounded corners=2pt] (\s,\y-0.28) rectangle (\e,\y+0.28);
+  }
+  \node[anchor=west,font=\sffamily\scriptsize,color=grey] at (13.7,1) {\%rbx};
+  \node[anchor=west,font=\sffamily\scriptsize,color=grey] at (13.7,2) {\%r12};
+  \node[anchor=west,font=\sffamily\scriptsize,color=grey] at (13.7,3) {\%r13};
+  \node[anchor=west,font=\sffamily\scriptsize,color=grey] at (13.7,4) {\%r14};
+  \node[anchor=west,font=\sffamily\scriptsize,color=grey] at (13.7,5) {\%r14 (reused)};
+  \node[anchor=west,font=\sffamily\scriptsize,color=grey] at (13.7,6) {\%r14 (reused)};
+\end{tikzpicture}
+\caption{Illustration of linear scan on the \texttt{sum} loop: live intervals sorted by start; short-lived temporaries reuse a register once the previous interval has expired. (Schematic; indices are not to scale.)}
+\end{figure}
+
+\subsection{Further code-quality measures}
+\begin{itemize}
+  \item \textbf{Direct operand forms.} Integer \code{add}, \code{sub}, \code{cmp} take a register, stack slot or 32-bit immediate directly (\code{imul} a register or slot) instead of staging the operand in \code{\%rcx}.
+  \item \textbf{Zero-initialisation once per location.} All slots are zeroed at entry (so reading before writing is deterministic); registers shared by disjoint intervals are cleared once.
+\end{itemize}
+
+\subsection{Result on a real function}
+Listing~\ref{lst:asm} shows the register-allocated prologue and first basic blocks of the recursive Fibonacci function from the shipped example; Listing~\ref{lst:asmoff} the same function without allocation.
+
+\begin{figure}[H]
+\begin{minipage}[t]{0.52\textwidth}\begingroup\lstset{caption={With linear scan (\code{\%r13}--\code{\%r15} hold values).},label={lst:asm}}\input{gen/asm_snippet}\endgroup\end{minipage}\hfill
+\begin{minipage}[t]{0.44\textwidth}\begingroup\lstset{caption={Without allocation: every value in a stack slot.},label={lst:asmoff}}\input{gen/asm_snippet_off}\endgroup\end{minipage}
+\end{figure}
+
+For the whole example program the allocator reduces stack-memory operands from \AsmMemOff{} to \AsmMemOn{} (\AsmMemCut{}\% fewer) at the cost of \AsmRegUses{} register-save/restore and register-operand instructions. This is a \emph{static count of instructions touching the stack}, not a timing; Chapter~\ref{ch:perf} measures actual run time.
+
+\shot{ui_native}{The studio's Native x86-64 page: generated assembly with registers highlighted, and the before/after count of stack-memory operands.}
+
+\begin{warnbox}
+The generated code is correct but not optimal. Visible in Listing~\ref{lst:asm}: values are still routed through \code{\%rax} (\verb|movq %r15,%rax; cmpq $2,%rax|) instead of operating on the allocated register directly; comparisons materialise a boolean (\verb|setl|, \verb|movzbq|) before branching rather than branching on the flags; and live intervals have no holes. A peephole pass and a compare-and-branch fusion are the obvious next steps.
+\end{warnbox}

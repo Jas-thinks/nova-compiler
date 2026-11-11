@@ -1,0 +1,118 @@
+\chapter{The assistant and the language server}
+\label{ch:assistant}
+
+\section{Design principle: the compiler decides}
+Large language models are good at \emph{proposing} fixes and unreliable at \emph{knowing} whether a fix is right. A compiler is the opposite: it cannot propose anything, but it knows with certainty whether a program is accepted. The assistant combines the two roles so that \textbf{a suggestion is only presented as ``verified'' if the real compiler accepts it}. This holds for the offline rule-based engine and for the optional LLM layer alike.
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm and 8mm,font=\sffamily\small]
+  \node[box] (d) {Compiler\\diagnostic};
+  \node[boxg,right=of d] (r) {Rule or model\\proposes an edit};
+  \node[boxa,right=of r] (a) {Apply edit\\to a copy};
+  \node[box,right=of a] (c) {Re-compile\\(real compiler)};
+  \node[boxk,below=10mm of c,minimum width=34mm] (v) {error gone and\\no new errors?};
+  \node[boxg,left=14mm of v] (y) {\textbf{verified}\\offer to user};
+  \node[boxr,below=9mm of v] (n) {discard /\\retry with new errors};
+  \draw[arr] (d)--(r); \draw[arr] (r)--(a); \draw[arr] (a)--(c); \draw[arr] (c)--(v);
+  \draw[arr] (v)--node[lab,above]{yes}(y); \draw[arr] (v)--node[lab,right]{no}(n);
+  \draw[darr] (n.west) -| ([xshift=-5mm]r.south) node[lab,pos=0.25,above]{LLM layer only};
+\end{tikzpicture}
+\caption{The verification loop shared by every kind of fix.}\label{fig:verify}
+\end{figure}
+
+\section{Rule-based quick fixes (no API key needed)}\label{sec:quickfix}
+Each rule maps one diagnostic to a text edit expressed as \emph{(range, replacement)}. Edits are applied right-to-left so earlier offsets stay valid.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}\toprule
+\textbf{Diagnostic} & \textbf{Fix} & \textbf{How it is derived}\\ \midrule
+E-SYN-001 & insert \code{;} & at the end of the previous token (position from the parser's diagnostic)\\
+E-SEM-001/006 & rename to the suggested name & the ``Did you mean 'X'?'' text produced by edit distance\\
+E-SEM-004 (init/assign/return/argument) & wrap in \code{to\_int(\ldots)} or \code{to\_float(\ldots)} & direction read from the types in the message\\
+E-SEM-004 (int as condition) & \code{x != 0} & parentheses added only if not already enclosed\\
+E-SEM-005 (int op float) & convert either operand & the operand text is found by splitting at the top-level operator (outside parentheses); two alternatives are offered\\
+E-SEM-009 (missing return) & add \code{return <default>;} & default value chosen from the declared type\\
+W-SEM-001 (unused variable) & delete the declaration line & only for simple single-line \code{let} statements\\ \bottomrule
+\end{tabularx}
+\caption{Quick-fix rules.}
+\end{table}
+
+\textbf{Verification.} For each candidate the service applies the edit to a copy of the source, runs the compiler, and sets \code{verified} only if the targeted diagnostic (same code and position) disappeared \emph{and} the total error count did not rise (and, for an error, fell by at least one). The response also carries the unified diff and the patched source so a client can offer ``Apply fix'' without recomputing anything.
+
+\subsection{Auto-fix}
+\code{POST /api/autofix} repeats the following up to 12 times: take the first error, try its candidate fixes in order, accept the first one that reduces the error count, recompile. It reports \code{fixed} (the program now compiles), \code{partial} (progress, but errors remain) or \code{no\_automatic\_fix}.
+
+\begin{table}[H]\centering\small\input{gen/autofix_table}\caption{Auto-fix applied to the five shipped error examples (real results). The two partial results are errors that genuinely need a human decision: a wrong \emph{number} of arguments (which values to pass?) and a duplicate declaration (which one to keep?).}\end{table}
+
+\begin{figure}[H]
+\begin{minipage}[t]{0.50\textwidth}\input{gen/autofix_diff}\end{minipage}\hfill
+\begin{minipage}[t]{0.46\textwidth}\textbf{Steps taken:}\\[2pt]\small\input{gen/autofix_steps}\end{minipage}
+\caption{Auto-fix on \texttt{e03\_type\_mismatch}: three errors fixed in three verified steps (real output).}
+\end{figure}
+
+\shot{ui_assistant_fixes}{The AI Assistant page: live, compiler-verified quick fixes with diffs, error counts before and after, and a one-click \emph{Apply fix}.}
+\shot{ui_assistant_autofix}{Auto-fix applied to the whole program with its step list and combined diff.}
+
+\section{Rule-based runtime root-cause analysis}
+When a program compiles but traps at run time, the assistant runs it on the VM with tracing and reasons from the \emph{recorded failing state}: the error, the source line, the values of all named variables at the instant of failure (names recovered from the bytecode's slot tables, ignoring compiler temporaries) and the last few VM events.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}\toprule
+\textbf{Trap} & \textbf{Rule}\\ \midrule
+division/modulo by zero & extract the divisor from the source line (\code{/ x} or \code{\% x}); if it is a variable, report its value; otherwise list the variables that are zero; suggest a guard \code{if (x != 0)}\\
+index out of bounds & extract \code{array[index]} from the line, report the index value, suggest \code{if (i >= 0 \&\& i < len(a))}\\
+negative array size & extract the size expression, report its value\\
+stack overflow & name the recursing function from the deepest frame, show its argument values, suggest fixing the base case\\
+step limit & report the variables when the program was stopped, suggest checking that the loop condition changes\\ \bottomrule
+\end{tabularx}
+\caption{Runtime analysis rules.}
+\end{table}
+
+\begin{figure}[H]
+\begin{minipage}[t]{0.49\textwidth}\begingroup\lstset{style=tiny}\input{gen/runtime_explain}\endgroup\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}\begingroup\lstset{style=tiny}\input{gen/runtime_explain2}\endgroup\end{minipage}
+\caption{Real analysis of \texttt{r01\_division\_by\_zero} (left) and \texttt{r02\_stack\_overflow} (right).}
+\end{figure}
+
+\shot{ui_assistant_runtime}{Runtime analysis in the studio: root cause, suggested fix, and the variables at the moment of failure (the zero divisor is highlighted).}
+
+\section{The optional LLM layer}
+Two endpoints call an LLM (the Anthropic Messages API) when the server has an \code{ANTHROPIC\_API\_KEY}:
+\begin{itemize}
+  \item \code{POST /api/ai/fix}: the model receives the compiler's errors and the program and replies with a full corrected program. The service \emph{re-compiles} the candidate; only if it compiles is it returned, together with a diff. If it does not, the new diagnostics are fed back and the model tries again, up to three attempts. If no candidate passes, nothing is applied and the response says so.
+  \item \code{POST /api/ai/debug}: the model receives the same recorded evidence as the rule-based analysis and explains the root cause in prose.
+\end{itemize}
+The model is injected as a function argument, so the whole loop is unit-tested offline with a \emph{scripted fake model}: a correct fix is accepted, a bad first attempt triggers a retry that receives the compiler's feedback, an unverifiable fix is \emph{never} returned, and a program that already compiles causes no model call at all. When no key is configured the endpoints return a clear ``not configured'' message and everything else keeps working.
+
+\begin{warnbox}
+The LLM path has been exercised only against the scripted model in tests; no real API key was available in the test environment, so real-model quality and latency are unmeasured.
+\end{warnbox}
+
+\shot{ui_assistant_claude}{The ``Ask Claude'' tab states plainly that the model is not configured on this server.}
+
+\section{The language server (LSP)}
+The language server (\code{backend/app/lsp.py}) lets any editor that speaks the Language Server Protocol use NOVA. It reads JSON-RPC messages with \code{Content-Length} framing from standard input and answers on standard output. All answers are \emph{derived from the compiler's output} --- there is no second parser that could disagree with the real one.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}\toprule
+\textbf{Feature (LSP method)} & \textbf{Source of the answer}\\ \midrule
+Diagnostics (\code{publishDiagnostics}) & compiler diagnostics, converted from 1-based inclusive-start/exclusive-end ranges to LSP's 0-based ranges; the suggestion is appended to the message\\
+Hover & the symbol tables (type, read/write counts) or the function table (signature, call count)\\
+Go to definition & the declaration location of the resolved symbol or function\\
+Find references & the recorded read and write locations of the symbol\\
+Completion & keywords, types, functions with signatures, and the variables visible at the cursor's line\\
+Document symbols & the list of user functions\\
+Code actions (\code{quickfix}) & the same rules as Section~\ref{sec:quickfix}, returned as \code{WorkspaceEdit}s\\ \bottomrule
+\end{tabularx}
+\caption{Language-server features.}
+\end{table}
+
+While the user is mid-edit and the program does not parse, the server keeps the \emph{last good} symbol tables so that completion keeps working.
+
+\begin{figure}[H]\centering\begingroup\lstset{style=tiny}\input{gen/lsp_demo}\endgroup
+\caption{A real session over stdio: diagnostic, hover and go-to-definition on a program with a type error.}
+\end{figure}
+
+\begin{warnbox}
+The server is covered by 11 protocol tests and a real stdio round trip, but the thin VS Code client in \code{editors/vscode} has not been run in a real VS Code session.
+\end{warnbox}

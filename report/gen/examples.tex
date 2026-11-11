@@ -1,0 +1,462 @@
+\subsection*{01\_hello\_arithmetic.nova --- Arithmetic \& branching}
+\noindent The introductory NOVA program: variables, expressions, if/else.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let age: int = 22;
+    let marks: float = 91.5;
+    let passed: bool = true;
+
+    let result: int = 10 + 20 * 2;
+
+    if (result > 30) {
+        print(result);
+    } else {
+        print(0);
+    }
+    print(marks);
+    print(passed);
+    print(age);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+50
+91.5
+true
+22
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{02\_factorial.nova --- Recursive factorial}
+\noindent Function calls, parameters, return values and recursion (watch call frames in the debugger).
+\begin{lstlisting}[language=nova,]
+fn fact(n: int) -> int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * fact(n - 1);
+}
+
+fn main() {
+    let i: int = 1;
+    while (i <= 6) {
+        print(fact(i));
+        i = i + 1;
+    }
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+1
+2
+6
+24
+120
+720
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{03\_fibonacci.nova --- Fibonacci (iterative + recursive)}
+\noindent Two implementations of the same function; both print the same values.
+\begin{lstlisting}[language=nova,]
+fn fib_rec(n: int) -> int {
+    if (n < 2) { return n; }
+    return fib_rec(n - 1) + fib_rec(n - 2);
+}
+
+fn fib_iter(n: int) -> int {
+    let a: int = 0;
+    let b: int = 1;
+    let i: int = 0;
+    while (i < n) {
+        let next: int = a + b;
+        a = b;
+        b = next;
+        i = i + 1;
+    }
+    return a;
+}
+
+fn main() {
+    let n: int = 0;
+    while (n < 10) {
+        print(fib_iter(n));
+        n = n + 1;
+    }
+    print(fib_rec(12));
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+144
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{04\_optimization\_demo.nova --- Optimization showcase}
+\noindent Constant folding, propagation, CSE, algebraic identities, a dead branch and dead stores.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let base: int = 4 * 8 + 2;          // folds to 34
+    let scale: int = 2;
+    let x: int = base * scale + 0;      // x*1/+0 identities
+    let y: int = base * scale;          // common subexpression with x
+    let unused: int = 7 * 6;            // dead store
+    let debug: bool = false;
+
+    if (debug) {                        // branch is never taken
+        print(unused);
+    }
+
+    let t: int = (x + y) * 2;           // strength reduction
+    print(t);
+    print(x - x);
+    print(y % 1);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+272
+0
+0
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{05\_primes.nova --- Prime sieve by trial division}
+\noindent Nested while loops, modulo and boolean logic.
+\begin{lstlisting}[language=nova,]
+fn is_prime(n: int) -> bool {
+    if (n < 2) { return false; }
+    let d: int = 2;
+    while (d * d <= n) {
+        if (n % d == 0) { return false; }
+        d = d + 1;
+    }
+    return true;
+}
+
+fn main() {
+    let n: int = 2;
+    let count: int = 0;
+    while (n < 40) {
+        if (is_prime(n)) {
+            print(n);
+            count = count + 1;
+        }
+        n = n + 1;
+    }
+    print(count);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+2
+3
+5
+7
+11
+13
+17
+19
+23
+29
+31
+37
+...
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{06\_floats\_and\_casts.nova --- Floats and explicit casts}
+\noindent NOVA has no implicit conversions: use to\_float / to\_int.
+\begin{lstlisting}[language=nova,]
+fn average(a: int, b: int, c: int) -> float {
+    return to_float(a + b + c) / 3.0;
+}
+
+fn main() {
+    let avg: float = average(90, 85, 77);
+    print(avg);
+    let rounded: int = to_int(avg * 100.0);
+    print(rounded);
+    print(avg > 84.0 && avg < 85.0);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+84.0
+8400
+false
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{07\_scopes.nova --- Nested scopes \& shadowing}
+\noindent Inner blocks may shadow outer names; see the scope tree in Semantic Analysis.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let x: int = 1;
+    {
+        let x: int = 2;
+        print(x);
+        {
+            let x: int = 3;
+            print(x);
+        }
+        print(x);
+    }
+    print(x);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+2
+3
+2
+1
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{08\_gcd.nova --- Euclid's GCD}
+\noindent A classic loop with modulo; good for stepping in the debugger.
+\begin{lstlisting}[language=nova,]
+fn gcd(a: int, b: int) -> int {
+    while (b != 0) {
+        let r: int = a % b;
+        a = b;
+        b = r;
+    }
+    return a;
+}
+
+fn main() {
+    print(gcd(48, 18));
+    print(gcd(1071, 462));
+    print(gcd(17, 5));
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+6
+21
+1
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{09\_arrays.nova --- Arrays: bubble sort}
+\noindent Heap-allocated int[] with literals, new, indexing, assignment and len(); arrays are passed by reference.
+\begin{lstlisting}[language=nova,]
+fn swap(a: int[], i: int, j: int) {
+    let t: int = a[i];
+    a[i] = a[j];
+    a[j] = t;
+}
+
+fn sort(a: int[]) {
+    let n: int = len(a);
+    let i: int = 0;
+    while (i < n) {
+        let j: int = 0;
+        while (j < n - 1 - i) {
+            if (a[j] > a[j + 1]) { swap(a, j, j + 1); }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+}
+
+fn main() {
+    let a: int[] = [5, 2, 9, 1, 7, 3];
+    sort(a);
+    let i: int = 0;
+    while (i < len(a)) { print(a[i]); i = i + 1; }
+    let squares: int[] = new int[5];
+    i = 0;
+    while (i < 5) { squares[i] = i * i; i = i + 1; }
+    print(squares[4]);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+1
+2
+3
+5
+7
+9
+16
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{10\_strings.nova --- Strings}
+\noindent Immutable string literals with concatenation, equality, len() and print.
+\begin{lstlisting}[language=nova,]
+fn greet(name: string) -> string {
+    return "Hello, " + name + "!";
+}
+
+fn main() {
+    let s: string = greet("NOVA");
+    print(s);
+    print(len(s));
+    print(s == "Hello, NOVA!");
+    print(s != greet("world"));
+    let line: string = "";
+    let i: int = 0;
+    while (i < 3) { line = line + "ab"; i = i + 1; }
+    print(line);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+Hello, NOVA!
+12
+true
+true
+ababab
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{e01\_undefined\_variable.nova --- Error: undefined variable}
+\noindent Misspelled identifier; the compiler suggests a fix using edit distance.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let counter: int = 10;
+    print(countr + 1);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=red!4,colframe=red!60!black,title={Compiler output},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+E-SEM-001 at 6:11: Variable 'countr' is not declared
+    hint: Did you mean 'counter'?
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{e02\_missing\_semicolon.nova --- Error: missing semicolon}
+\noindent Syntax error found by the LR(1) parser; location points just after the previous token.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let a: int = 5
+    print(a);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=red!4,colframe=red!60!black,title={Compiler output},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+E-SYN-001 at 5:19: Expected ';' but found 'print'
+    hint: Insert ';' at the end of the previous statement.
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{e03\_type\_mismatch.nova --- Error: type mismatch}
+\noindent Mixing int and float, a float assigned to an int variable, and a non-bool condition.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let a: int = 5;
+    let b: float = 2.5;
+    let c: float = a + b;
+    let d: int = 3.5;
+    if (a) {
+        print(c);
+    }
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=red!4,colframe=red!60!black,title={Compiler output},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+E-SEM-005 at 7:20: Operator '+' cannot be applied to int and float
+    hint: NOVA has no implicit int/float conversion. Wrap the int operand in to_float(...) or the float operand in to_int(...).
+E-SEM-004 at 8:18: Cannot initialise 'd' of type int with a value of type float
+    hint: Use to_int(<expr>) to truncate explicitly.
+E-SEM-004 at 9:9: If condition must be bool but has type int
+    hint: Compare explicitly, e.g. (x != 0).
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{e04\_wrong\_arguments.nova --- Error: wrong function calls}
+\noindent Wrong argument count, wrong argument type and a call to an undefined function.
+\begin{lstlisting}[language=nova,]
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn main() {
+    print(add(1));
+    print(add(1, 2.0));
+    print(addd(1, 2));
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=red!4,colframe=red!60!black,title={Compiler output},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+E-SEM-007 at 9:11: Function 'add' expects 2 argument(s) but 1 were given
+    hint: Add the missing argument(s).
+E-SEM-004 at 10:18: Argument 2 of 'add' has type float but parameter 'b' is int
+    hint: Pass a int value.
+E-SEM-006 at 11:11: Function 'addd' is not defined
+    hint: Did you mean 'add'?
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{e05\_duplicate\_and\_return.nova --- Error: duplicate declaration \& missing return}
+\noindent Redeclaring a variable in the same scope, and a function that can fall off its end.
+\begin{lstlisting}[language=nova,]
+fn sign(n: int) -> int {
+    if (n > 0) {
+        return 1;
+    }
+}
+
+fn main() {
+    let x: int = 1;
+    let x: int = 2;
+    print(sign(x));
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=red!4,colframe=red!60!black,title={Compiler output},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+E-SEM-009 at 8:1: Function 'sign' may reach its end without returning a value of type int
+    hint: Add 'return <int value>;' at the end of the function.
+E-SEM-002 at 12:9: 'x' is already declared in this scope (line 11)
+    hint: Use a different name, or assign to the existing variable with 'x = ...;'.
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{r01\_division\_by\_zero.nova --- Runtime error: division by zero}
+\noindent Compiles fine; the VM traps at run time. The optimizer must not fold this away.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let a: int = 10;
+    let zero: int = 5 - 5;
+    print(a / 2);
+    print(a / zero);
+    print(1);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+5
+[runtime error: division by zero at line 8]
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{r02\_stack\_overflow.nova --- Runtime error: stack overflow}
+\noindent Unbounded recursion is stopped by the VM call-depth limit.
+\begin{lstlisting}[language=nova,]
+fn forever(n: int) -> int {
+    return forever(n + 1) + 1;
+}
+
+fn main() {
+    print(forever(0));
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+
+[runtime error: stack overflow: call depth exceeded 512 at line 5]
+\end{lstlisting}
+\end{tcolorbox}
+\subsection*{r03\_index\_out\_of\_bounds.nova --- Runtime error: index out of bounds}
+\noindent Array accesses are bounds-checked in the VM and in native code.
+\begin{lstlisting}[language=nova,]
+fn main() {
+    let a: int[] = [1, 2, 3];
+    print(a[2]);
+    print(a[3]);
+}
+\end{lstlisting}
+\begin{tcolorbox}[colback=green!4,colframe=green!45!black,title={Program output (optimized VM)},fonttitle=\bfseries\small,boxsep=2pt,left=4pt,right=4pt,top=2pt,bottom=2pt]
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,frame=none,backgroundcolor=\color{white}]
+3
+[runtime error: index out of bounds at line 7]
+\end{lstlisting}
+\end{tcolorbox}

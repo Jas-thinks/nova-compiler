@@ -1,0 +1,35 @@
+\begin{tabular}{@{}llr@{}}\toprule
+\textbf{Suite} & \textbf{What it checks} & \textbf{Tests}\\ \midrule
+\texttt{vm} & bytecode VM, calls, runtime errors & 17\\
+\texttt{optimizer} & each optimization pass and fixed point & 13\\
+\texttt{semantic} & scopes, types, calls, returns, diagnostics & 12\\
+\texttt{parser} & LR(1) parsing, precedence, associativity, errors & 11\\
+\texttt{sql} & NOVA-SQL compiler and engine & 10\\
+\texttt{dataflow2} & iteration history, convergence & 9\\
+\texttt{arith} & integer/float semantics, traps & 8\\
+\texttt{lexer} & tokens, positions, comments, malformed literals & 8\\
+\texttt{fuzz} & random program generator, mutation fuzzing, minimizer & 7\\
+\texttt{cfg2} & loops, reachability, entry loops & 6\\
+\texttt{e2e} & end-to-end programs & 6\\
+\texttt{grammar} & FIRST/FOLLOW, LR(1) tables, zero conflicts & 6\\
+\texttt{heap} & arrays and strings & 6\\
+\texttt{recovery} & panic-mode syntax error recovery & 6\\
+\texttt{boundary} & limits and boundary conditions & 5\\
+\texttt{cfg} & basic blocks, edges, dominators & 5\\
+\texttt{regalloc} & x86-64 backend and register allocation & 5\\
+\texttt{ssa2} & SSA verifier, phi operands & 5\\
+\texttt{ast} & AST shape and source ranges & 4\\
+\texttt{dataflow} & liveness, reaching definitions & 4\\
+\texttt{inlining} & interprocedural inlining & 4\\
+\texttt{ir} & IR generation & 4\\
+\texttt{semantic2} & additional semantic rules & 4\\
+\texttt{ssa} & pruned SSA construction & 4\\
+\texttt{vm2} & trace capping, deterministic snapshots & 4\\
+\texttt{astvalid} & AST structural validation & 3\\
+\texttt{differential} & VM vs reference interpreter vs optimized VM & 3\\
+\texttt{verifier} & static bytecode verifier & 3\\
+\texttt{analysis} & analysis JSON artifacts & 1\\
+\texttt{regression} & corpus of all examples, all pass subsets & 1\\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Total C++ unit tests}} & \textbf{184}\\ \bottomrule
+\end{tabular}

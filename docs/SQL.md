@@ -43,7 +43,7 @@ Each rewrite is recorded with a description and the plan before/after, and shown
 ## Verification
 * `scripts/sql_fuzz.py` generates random schemas, data, DML and well-typed queries (joins, GROUP BY/HAVING, DISTINCT, ORDER BY, LIMIT, NULLs, LIKE/IN/BETWEEN, scalar functions) and compares NOVA-SQL with **SQLite** (Python `sqlite3`) as an independent oracle: 4910/4910 agreed over 5 000 seeds (90 skipped because SQLite itself rejected the generated statement). It found a real bug during development (nested aggregate lost its static FLOAT type).
 * `scripts/sql_fuzz.py --mutate` feeds garbled scripts to the compiler (under ASan/UBSan in `scripts/sanitize.sh`): it must always return diagnostics, never crash.
-* 9 C++ unit tests (`compiler/tests/test_sql.cpp`), 8 API tests (`backend/tests/test_sql.py`, which also runs 200 differential cases), 3 UI tests.
+* 10 C++ unit tests (`compiler/tests/test_sql.cpp`), 8 API tests (`backend/tests/test_sql.py`, which also runs 200 differential cases), 3 UI tests.
 
 ## Not implemented
 Subqueries, `UNION`, window functions, indexes (all scans are full scans; joins use hash or nested loop), transactions, persistence, multi-column hash keys, cost-based join ordering, `BOOL`/date types.

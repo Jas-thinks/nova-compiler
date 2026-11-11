@@ -1,0 +1,111 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{What this project is}
+A \emph{compiler} is a program that translates text written by a human (source code) into something a machine can execute. Compilers are among the most intricate programs in computing because they must be \emph{exactly} right: a single wrong rewrite silently changes the meaning of every program that passes through it.
+
+This project, called \nova{}, is a complete compiler-engineering platform. It is not one compiler but \emph{two}, plus the tools needed to build, test, debug and visualise them:
+
+\begin{enumerate}
+  \item \textbf{\nova{} the language and its compiler} --- a small, statically typed language (integers, floats, booleans, strings, arrays, functions) compiled either to a bytecode virtual machine or to real x86-64 machine code.
+  \item \textbf{\novasql{}} --- a compiler for the SQL query language, together with an in-memory database engine that executes the compiled queries.
+  \item \textbf{An assistant and a language server} --- tools that turn compiler diagnostics into verified fixes and bring the compiler into code editors.
+  \item \textbf{A web studio} --- a React application whose 19 pages show every phase of both compilers using the \emph{real} compiler output, never mock data.
+\end{enumerate}
+
+\begin{plain}
+Think of the compiler as a factory line. Raw material (source text) enters at one end; at each station it is reshaped --- split into words (lexing), arranged into sentences (parsing), checked for meaning (semantic analysis), simplified (optimization) --- and the finished product (machine code) leaves at the other end. This report walks along the whole line, explains what every station does, and shows how the stations were tested.
+\end{plain}
+
+\section{Motivation and goals}
+Textbook compiler courses present each phase in isolation, usually on toy inputs. Real compilers are different in three ways that this project deliberately tackles:
+
+\begin{itemize}
+  \item \textbf{Phases must work together.} A type error found late, an optimization that breaks a loop, or a code generator that mishandles a corner case only shows up when all phases run on the same program.
+  \item \textbf{Correctness is hard to see.} Compiler bugs are silent. The only convincing evidence of correctness is \emph{independent} evidence: a second implementation that computes the same answer by a different route.
+  \item \textbf{Tooling matters.} Good diagnostics, a debugger, an editor integration and a way to \emph{look inside} the compiler are what make a compiler usable.
+\end{itemize}
+
+The goals were therefore: (1) implement every classical phase from scratch with no parser-generator or code-generator libraries; (2) support \emph{two} different kinds of languages (an imperative one and a declarative one) to show which techniques are universal; (3) verify everything by differential testing and fuzzing; (4) measure performance honestly; (5) make every internal step visible and understandable.
+
+\section{Contributions}
+\begin{enumerate}[label=\textbf{C\arabic*.}]
+  \item A \textbf{canonical LR(1) parser generator} built from first principles (items, closure, goto, ACTION/GOTO tables) for a grammar with \LRProductions{} productions, producing \LRStates{} states without a single conflict, plus yacc-style panic-mode error recovery.
+  \item A \textbf{typed front end} with scoped symbol tables, static type checking and edit-distance ``did you mean'' suggestions; \NumDiagCodes{} diagnostic codes with exact source ranges.
+  \item A \textbf{middle end} with a three-address IR, CFG construction, dominators, liveness, reaching definitions, \emph{pruned SSA}, and seven optimization passes including \textbf{interprocedural inlining} with a call-graph recursion check.
+  \item \textbf{Two back ends}: a stack-based \textbf{bytecode VM} with a time-travel debugger and static verifier, and a \textbf{native x86-64 code generator} with a \textbf{linear-scan register allocator}, a heap, strings and runtime traps.
+  \item \textbf{\novasql{}}: parser, binder with \textbf{three-valued logic}, logical plan, rule-based optimizer (\textbf{predicate pushdown, hash joins, top-N}), expression bytecode and executor.
+  \item A \textbf{compiler-verified assistant}: quick fixes and an auto-fixer that only offer a change after re-compiling it, rule-based runtime root-cause analysis, optional LLM integration whose output is re-checked, and an LSP server with code actions.
+  \item A \textbf{verification framework}: a reference interpreter, a random program generator, a failure minimizer, native-versus-VM differential tests, a SQL-versus-SQLite fuzzer, mutation fuzzing and sanitizer builds --- \TotalTests{} automated tests in total.
+  \item A \textbf{web platform}: a sandboxed REST service (\NumEndpoints{} endpoints) and a React/TypeScript studio.
+\end{enumerate}
+
+\section{The project at a glance}
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}lr@{\hspace{2.2cm}}lr@{}}\toprule
+\textbf{Measure} & \textbf{Value} & \textbf{Measure} & \textbf{Value}\\ \midrule
+Lines of code (all languages) & \TotalLOC{} & LR(1) states / conflicts & \LRStates{} / \LRConflicts{}\\
+Compiler core + SQL (C++) & \CompilerLOC{} & Grammar productions & \LRProductions{}\\
+\novasql{} engine (C++) & \SQLLOC{} & VM opcodes & \NumOpcodes{}\\
+Automated tests & \TotalTests{} & Optimization passes & 7\\
+\quad C++ / backend / frontend & \CppTests{} / \BackendTests{} / \FrontendTests{} & REST endpoints & \NumEndpoints{}\\
+Example programs shipped & \NumExamples{} & Diagnostic codes & \NumDiagCodes{}\\
+Git commits & \NumCommits{} & Studio pages & 19\\ \bottomrule
+\end{tabular}
+\caption{Key figures, generated from the repository (see Section~\ref{sec:reproduce}).}
+\end{table}
+
+\section{Repository tour}
+Table~\ref{tab:loc} shows where the code lives. The compiler core is C++17 for speed and control; the web service is Python (FastAPI) because it mostly orchestrates processes and JSON; the studio is TypeScript/React.
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}c@{}}\input{gen/loc_table}\end{tabular}
+\caption{Lines of code per component (measured by the report generator).}\label{tab:loc}
+\end{table}
+
+\begin{lstlisting}[style=tiny,caption={Top-level layout of the repository.},label={lst:layout}]
+nova/
+  compiler/     C++17: lexer, parser (LR(1) generator), ast, semantic, ir, optimizer, analysis,
+                codegen (VM bytecode + x86-64), vm, sql/, tests/, runtime/ (C runtime for native code)
+  backend/      FastAPI service (app/) and its pytest suite (tests/)
+  frontend/     React + TypeScript + Vite + Tailwind + Monaco + React Flow (19 pages) + Vitest
+  examples/     NOVA programs (valid, error, runtime-error) and SQL scripts
+  benchmarks/   fib, primes and inlining workloads, with CPython equivalents
+  editors/      VS Code client for the language server
+  scripts/      dev, build, serve, test, sanitize, bench, native build, SQL fuzzer, LSP launcher
+  docs/         specifications and design notes
+  report/       this report (LaTeX) and the generator that produces its data
+\end{lstlisting}
+
+\section{How to read this report}
+Every chapter starts with the idea in plain language, then gives the technical detail, then shows real output. Coloured boxes mark the different kinds of content:
+
+\begin{plain}[In plain words]
+An intuitive explanation for readers new to compilers.
+\end{plain}
+\begin{keybox}[Key idea]
+The central technical insight of a section.
+\end{keybox}
+\begin{bugbox}[A real bug the tests caught]
+A defect found by the project's own verification, how it was found and how it was fixed.
+\end{bugbox}
+\begin{warnbox}[Honest limitation]
+Something the implementation deliberately does \emph{not} do, or has not been verified to do.
+\end{warnbox}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lp{0.62\textwidth}@{}}\toprule
+\textbf{If you want to\ldots} & \textbf{read}\\ \midrule
+understand the whole system quickly & Chapters~\ref{ch:intro}, \ref{ch:arch} and~\ref{ch:verify}\\
+learn how a language is compiled & Chapters~\ref{ch:language}--\ref{ch:backends}\\
+learn how SQL is compiled & Chapter~\ref{ch:sql}\\
+see how correctness was established & Chapter~\ref{ch:verify} and the bug boxes throughout\\
+run the project yourself & Appendix~\ref{app:manual}\\
+look up a term & the Glossary at the end\\ \bottomrule
+\end{tabular}
+\caption{Reader paths.}
+\end{table}
+
+\section{Reproducing the numbers in this report}\label{sec:reproduce}
+No number in this report was typed by hand. The script \code{report/tools/gen\_data.py} runs the real compiler, the test suites, the fuzzers and the benchmarks, and writes LaTeX fragments (tables, listings and macros such as \verb|\TotalTests|) that this document includes. Re-running the script and re-building the report therefore re-measures everything on the reader's machine.

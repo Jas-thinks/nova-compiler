@@ -1,0 +1,36 @@
+\begin{lstlisting}[]
+Program -> FuncList
+FuncList -> FuncList Func | Func
+Func -> fn ID ( ParamsOpt ) RetOpt Block
+ParamsOpt -> Params | eps
+Params -> Params , Param | Param
+Param -> ID : Type
+RetOpt -> -> Type | eps
+Type -> ElemType | ElemType [ ] | string
+ElemType -> int | float | bool
+Block -> { StmtList }
+StmtList -> StmtList Stmt | eps
+Stmt -> VarDecl | Assign | IfStmt | WhileStmt | ReturnStmt | PrintStmt | CallStmt | Block | error ; | error
+VarDecl -> let ID : Type = Expr ;
+Assign -> ID = Expr ; | ID [ Expr ] = Expr ;
+IfStmt -> if ( Expr ) Block ElsePart
+ElsePart -> else Block | else IfStmt | eps
+WhileStmt -> while ( Expr ) Block
+ReturnStmt -> return ExprOpt ;
+ExprOpt -> Expr | eps
+PrintStmt -> print ( Expr ) ;
+CallStmt -> Call ;
+Expr -> OrExpr
+OrExpr -> OrExpr || AndExpr | AndExpr
+AndExpr -> AndExpr && EqExpr | EqExpr
+EqExpr -> EqExpr == RelExpr | EqExpr != RelExpr | RelExpr
+RelExpr -> RelExpr < AddExpr | RelExpr <= AddExpr | RelExpr > AddExpr | RelExpr >= AddExpr | AddExpr
+AddExpr -> AddExpr + MulExpr | AddExpr - MulExpr | MulExpr
+MulExpr -> MulExpr * UnaryExpr | MulExpr / UnaryExpr | MulExpr % UnaryExpr | UnaryExpr
+UnaryExpr -> - UnaryExpr | ! UnaryExpr | Postfix
+Postfix -> Postfix [ Expr ] | Primary
+Primary -> INT_LIT | FLOAT_LIT | STR_LIT | true | false | ID | Call | ( Expr ) | [ Args ] | new ElemType [ Expr ]
+Call -> ID ( ArgsOpt )
+ArgsOpt -> Args | eps
+Args -> Args , Expr | Expr
+\end{lstlisting}

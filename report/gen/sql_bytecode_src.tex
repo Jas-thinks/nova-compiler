@@ -1,0 +1,5 @@
+\begin{lstlisting}[language=sql,]
+CREATE TABLE a (id INT, v INT);
+INSERT INTO a VALUES (1,10),(2,20);
+SELECT CASE WHEN v > 10 THEN 'hi' ELSE 'lo' END, v * 2 + 1 FROM a WHERE v BETWEEN 5 AND 50;
+\end{lstlisting}

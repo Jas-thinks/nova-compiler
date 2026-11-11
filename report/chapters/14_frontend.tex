@@ -1,0 +1,135 @@
+\chapter{The front end: lexer, parser, semantic analysis}
+\label{ch:frontend}
+
+\section{Lexical analysis}
+\subsection{Plain-language view}
+The lexer turns the character stream \verb|let x: int = 42;| into the token stream \code{let}, \code{x}, \code{:}, \code{int}, \code{=}, \code{42}, \code{;}. It also discards whitespace and comments and remembers where each token started, so that later error messages can point at the exact line and column.
+
+\subsection{Token classes}
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lp{0.62\textwidth}@{}}\toprule
+\textbf{Class} & \textbf{Pattern}\\ \midrule
+Identifier & \verb|[A-Za-z_][A-Za-z0-9_]*| (unless a keyword)\\
+Keywords & \code{fn let if else while return print int float bool true false string new}\\
+Integer literal & \verb|[0-9]+| (must fit in a signed 64-bit integer)\\
+Float literal & \verb|[0-9]+ . [0-9]+| (digits are required on both sides of the dot)\\
+String literal & \verb|"..."| with escapes \verb|\n \t \\ \"|; must close on the same line\\
+Operators & \verb|+ - * / % < <= > >= == != && || ! = ->|\\
+Punctuation & \verb|( ) { } [ ] , ; :|\\
+Comments & \verb|// ...| to end of line; \verb|/* ... */| (not nested)\\ \bottomrule
+\end{tabular}
+\caption{Lexical grammar.}
+\end{table}
+
+The scanner is a hand-written equivalent of a deterministic finite automaton: it looks at one character of look-ahead and applies the longest-match rule, which is why \verb|<=| is a single token. For the program \verb|fn main() { print(1 + 2 * 3); }| it produces the stream in Table~\ref{tab:tokens} (first 20 of \SampleTokens{} tokens shown; the \emph{terminal} column is the name the parser's grammar uses).
+
+\begin{table}[H]\centering\small
+\input{gen/tokens}
+\caption{Real token stream for \texttt{fn main() \{ print(1 + 2 * 3); \}}.}\label{tab:tokens}
+\end{table}
+
+\subsection{Lexical errors}
+Eight error codes cover malformed input; each has a position range, an explanation and a suggested fix, e.g. \texttt{E-LEX-006} (``Integer literal does not fit in 64 bits --- use a float literal'') or \texttt{E-LEX-007} (unterminated string). The scanner always makes progress after an error, so one run reports every lexical problem in the file.
+
+\section{Syntax analysis: the canonical LR(1) parser}
+\subsection{The grammar}
+The grammar (Listing~\ref{lst:grammar}) has \LRProductions{} productions over \LRTerminals{} terminals and \LRNonterminals{} nonterminals. Three design decisions keep it unambiguous and conflict-free:
+
+\begin{itemize}
+  \item \textbf{Stratified expressions.} Precedence is encoded by one nonterminal per level (\code{OrExpr}, \code{AndExpr}, \code{EqExpr}, \code{RelExpr}, \code{AddExpr}, \code{MulExpr}, \code{UnaryExpr}, \code{Postfix}, \code{Primary}); every binary level is left-recursive, which gives left associativity.
+  \item \textbf{Blocks are mandatory} after \code{if}/\code{while}, which removes the dangling-else ambiguity.
+  \item \textbf{Types are structured} as \code{Type -> ElemType | ElemType [ ] | string} so that \code{int[]} parses without ambiguity against indexing.
+\end{itemize}
+
+\subsection{Building the tables}
+The generator (\code{compiler/src/parser/lr1.cpp}) implements exactly the algorithm of Chapter~\ref{ch:background}: it computes FIRST and FOLLOW sets, builds the canonical collection of LR(1) item sets with closure and goto, and fills the ACTION and GOTO tables. For \nova{}'s grammar:
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lr@{\hspace{2cm}}lr@{}}\toprule
+LR(1) states & \LRStates{} & shift entries & \LRShift{}\\
+Productions (excl.\ augmented) & \LRProductions{} & reduce entries & \LRReduce{}\\
+Terminals / nonterminals & \LRTerminals{} / \LRNonterminals{} & goto entries & \LRGoto{}\\
+\textbf{Conflicts} & \textbf{\LRConflicts{}} & & \\ \bottomrule
+\end{tabular}
+\caption{Size of the generated parser. The table is built once at start-up from the grammar text, not hard-coded.}
+\end{table}
+
+\subsection{A worked example}
+Table~\ref{tab:trace} shows the first 26 of \SampleParseSteps{} steps (\SampleParseShifts{} shifts, \SampleParseReduces{} reduces) the parser takes for the program \code{fn main() \{ print(1 + 2 * 3); \}}. The stack alternates \emph{state numbers} and \emph{grammar symbols}; the right-most entries are the top. Watch how \code{1 + 2 * 3} is reduced: the parser shifts \code{2}, \code{*}, \code{3} and reduces \code{MulExpr -> MulExpr * UnaryExpr} \emph{before} reducing the addition, which is precisely how precedence emerges from the table.
+
+\begingroup\small
+\input{gen/parse_trace}
+\endgroup
+\captionof{table}{Real parse trace (state numbers are indices into the LR(1) automaton).}\label{tab:trace}
+
+\subsection{Error recovery}\label{sec:recovery}
+Stopping at the first syntax error is unfriendly. The grammar therefore contains two \emph{error productions}: \code{Stmt -> error ;} and \code{Stmt -> error}. When the table has no action for the current token the parser:
+\begin{enumerate}
+  \item reports a diagnostic (suppressing follow-on errors until three tokens have been shifted successfully, to avoid cascades);
+  \item pops states until it finds one that can shift the special \code{error} token;
+  \item shifts \code{error}, then discards input tokens until one is acceptable in the new state (typically \code{;} or \code{\}});
+  \item resumes normal parsing, guaranteeing progress by force-skipping a token if two recoveries happen at the same position.
+\end{enumerate}
+This is classic \emph{panic mode} (the strategy of yacc/bison). The diagnostics are classified so the message matches the programmer's mistake:
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lll@{}}\toprule
+\textbf{Code} & \textbf{Situation} & \textbf{Suggested fix}\\ \midrule
+E-SYN-001 & next token cannot continue an expression statement & insert \code{;} after the previous token\\
+E-SYN-002 & expected \code{)} & insert \code{)}\\
+E-SYN-003 & expected \code{\}} or a statement & close the block\\
+E-SYN-004 & end of file inside an open construct & add the missing closing token\\
+E-SYN-005 & expected an operand & provide a value or variable\\
+E-SYN-006 & any other mismatch & list the tokens that \emph{would} be valid here\\ \bottomrule
+\end{tabular}
+\caption{Syntax diagnostics. The list of expected tokens is read straight from the ACTION table row of the failing state.}
+\end{table}
+
+\section{The abstract syntax tree}
+The parse tree contains every grammar symbol, including the dozens of unit productions needed to encode precedence. \code{buildAst} converts it to a compact \textbf{typed AST} (\code{Program}, \code{FuncDecl}, \code{Block}, \code{VarDecl}, \code{Assign}, \code{IndexAssign}, \code{If}, \code{While}, \code{Return}, \code{Print}, \code{ExprStmt}, and expression nodes \code{IntLit}, \code{FloatLit}, \code{BoolLit}, \code{StrLit}, \code{VarRef}, \code{Binary}, \code{Unary}, \code{Call}, \code{ArrayLit}, \code{NewArray}, \code{Index}). Every node carries a source range, and a validator checks that children lie inside their parents' ranges and that every expression has a type after analysis.
+
+\section{Semantic analysis}
+\subsection{Scopes and symbol tables}
+The analyzer walks the AST maintaining a stack of scopes. Each declaration creates a \code{Symbol} (name, type, kind, declaration location, scope id, and lists of read and write locations). The studio's \emph{Semantic Analysis} page displays these tables directly from the analyzer's JSON.
+
+\subsection{Type rules}
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lp{0.62\textwidth}@{}}\toprule
+\textbf{Construct} & \textbf{Rule}\\ \midrule
+\verb|+ - * /| & both operands \code{int} or both \code{float}; result the same type\\
+\verb|%| & both \code{int}\\
+\verb|< <= > >=| & both numeric of the same type; result \code{bool}\\
+\verb|== !=| & both operands the same type (not arrays); result \code{bool}\\
+\verb+&&+, \verb+||+, \verb+!+ & \code{bool} operands\\
+\code{string + string} & concatenation; other string operators rejected\\
+\code{if}, \code{while} condition & \code{bool} (no ``truthiness'' of integers)\\
+\code{let x: T = e} & type of \code{e} equals \code{T}\\
+call \code{f(a$_1$,\ldots)} & arity matches; each argument's type equals the parameter's type\\
+\code{a[i]} & \code{a} is an array, \code{i} is \code{int}; type is the element type\\
+\code{print(e)} & \code{e} is not an array\\ \bottomrule
+\end{tabular}
+\caption{Static typing rules.}
+\end{table}
+
+\subsection{Further checks}
+\begin{itemize}
+  \item \textbf{Missing return}: a function with a result type must return on \emph{every} path; loops are assumed to possibly run zero times.
+  \item \textbf{Entry point}: \code{main} must exist with no parameters and no result.
+  \item \textbf{Void misuse}: calling a procedure where a value is needed is an error.
+  \item \textbf{Warnings}: unused variables (\code{W-SEM-001}) and statements after \code{return} (\code{W-SEM-002}) --- the second never blocks compilation.
+\end{itemize}
+
+\subsection{Helpful diagnostics}
+Every diagnostic contains a severity, a stable code, a category, the message, an \emph{explanation} of the rule, a \emph{suggestion}, and an exact source range (line, column, end line, end column). For undefined names the suggestion is computed with the \textbf{Levenshtein edit distance}
+\[ d(a,b)=\min \begin{cases} d(a_{1..i-1},b)+1 & \text{delete}\\ d(a,b_{1..j-1})+1 & \text{insert}\\ d(a_{1..i-1},b_{1..j-1})+[a_i\ne b_j] & \text{substitute}\end{cases} \]
+computed by dynamic programming in $O(|a|\cdot|b|)$; the closest declared name within a length-scaled threshold is offered as ``Did you mean\ldots?''. Section~\ref{sec:quickfix} shows how the assistant turns these suggestions into automatically verified fixes.
+
+\begin{lstlisting}[caption={Compiler output for the shipped example \texttt{e01\_undefined\_variable}.},label={lst:e01},style=tiny]
+E-SEM-001  6:11   Variable 'countr' is not declared
+                  hint: Did you mean 'counter'?
+W-SEM-001  5:9    Variable 'counter' is declared but never read
+\end{lstlisting}
+
+\begin{plain}
+Notice what the semantic analyzer \emph{does not} do: it never changes the program. It only annotates the tree with types and resolved names, and reports problems. Everything after this point can therefore assume the program is well-typed.
+\end{plain}

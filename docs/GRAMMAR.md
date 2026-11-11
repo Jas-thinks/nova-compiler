@@ -41,9 +41,9 @@ Args        -> Args , Expr | Expr
 
 ## Properties
 
-* **Size:** 72 productions (+1 augmented start), 39 terminals (incl. `$`), 33 nonterminals (incl. `S'`).
+* **Size:** 83 productions (+1 augmented start), 45 terminals (incl. `$` and `error`), 35 nonterminals (incl. `S'`).
 * **Unambiguous.** Precedence is encoded by stratifying expressions into levels (`Or < And < Eq < Rel < Add < Mul < Unary`); every binary level is left-recursive, giving left associativity. There is **no dangling else**: `if`/`while` bodies must be blocks.
-* **LR(1), no conflicts.** The canonical LR(1) construction yields 241 states, 662 shift, 1209 reduce and 410 goto entries and reports zero conflicts (`GET /api/health` and the Syntax Analysis page show the live numbers; the unit test `parser.grammarIsLR1WithoutConflicts` enforces it).
+* **LR(1), no conflicts.** The canonical LR(1) construction yields 432 states, 1555 shift, 2374 reduce and 898 goto entries and reports zero conflicts (`GET /api/health` and the Syntax Analysis page show the live numbers; the unit test `parser.grammarIsLR1WithoutConflicts` enforces it).
 * `to_float` and `to_int` are not keywords: they are ordinary identifiers resolved by the semantic analyzer as built-in functions.
 
 ## Lexical grammar

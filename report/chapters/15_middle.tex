@@ -1,0 +1,163 @@
+\chapter{The middle end: IR, analyses and optimization}
+\label{ch:middle}
+
+\section{Three-address intermediate representation}
+After semantic analysis the typed AST is lowered to a linear IR. Each function becomes a list of instructions over \emph{variables} (named program variables), \emph{temporaries} (\code{t1}, \code{t2}, \ldots created by the compiler) and \emph{constants}.
+
+\begin{table}[H]\centering\small
+\begin{adjustbox}{max width=\textwidth}\begin{tabular}{@{}llp{0.46\textwidth}@{}}\toprule
+\textbf{Instruction} & \textbf{Example} & \textbf{Meaning}\\ \midrule
+Copy & \verb|x = t3| & assign an operand\\
+Binary & \verb|t1 = a + b| & arithmetic, comparison (\code{+ - * / \% < <= > >= == !=})\\
+Unary & \verb|t2 = -a|, \verb|to_float(a)| & negate, logical not, int$\leftrightarrow$float conversion\\
+Label & \verb|L1:| & jump target (starts a basic block)\\
+Jump & \verb|goto L1| & unconditional\\
+Conditional jump & \verb|if_false t goto L2| & jump when the operand is false (or true)\\
+Call & \verb|t = call f(a, b)| & call a function; result optional\\
+Return / Print & \verb|return t|, \verb|print t| & leave the function / output a value\\
+\emph{Heap intrinsics} & \verb|t = a[i]|, \verb|a[i] = v|, \verb|t = new int[n]|, \verb|t = len(x)| & encoded as calls to \code{\_\_aload}, \code{\_\_astore}, \code{\_\_newarr}, \code{\_\_len}\\ \bottomrule
+\end{tabular}\end{adjustbox}
+\caption{IR instruction set.}
+\end{table}
+
+\begin{keybox}
+Encoding array operations as \emph{intrinsic calls} was a deliberate design choice. Every analysis and optimization already understands calls (their operands are uses, their result is a definition, they are never removed or merged), so adding arrays and strings required \emph{no change} to the optimizer, the liveness analysis or SSA construction.
+\end{keybox}
+
+\subsection{Short-circuit operators}
+\verb+&&+ and \verb+||+ must not evaluate their right operand when the left already decides the result. The IR generator therefore lowers \verb|a && b| to a temporary, a conditional jump and a label, rather than a single instruction.
+
+\section{Control-flow graph and dominators}
+A \textbf{basic block} starts at a label (or after a jump) and ends at a jump or return. Figure~\ref{fig:cfg} shows the CFG for a loop that sums $1..n$; the generated IR is in Listing~\ref{lst:loopir}.
+
+\begin{lstlisting}[language=nova,caption={The loop example.},label={lst:loopsrc}]
+fn sum(n: int) -> int {
+    let s: int = 0;
+    let i: int = 1;
+    while (i <= n) { s = s + i;  i = i + 1; }
+    return s;
+}
+\end{lstlisting}
+\begin{figure}[H]\centering\begin{minipage}{0.7\textwidth}
+\begingroup\lstset{caption={Generated IR for \texttt{sum}.},label={lst:loopir}}\input{gen/loop_ir}\endgroup
+\end{minipage}\end{figure}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=9mm]
+  \node[box,align=left,minimum width=38mm] (b0) {\textbf{B0 (entry)}\\\scriptsize s = 0; i = 1};
+  \node[boxa,align=left,below=of b0,minimum width=38mm] (b1) {\textbf{B1 (loop header)}\\\scriptsize L1: t1 = i <= n\\\scriptsize if\_false t1 goto L2};
+  \node[box,align=left,below left=10mm and 8mm of b1,minimum width=38mm] (b2) {\textbf{B2 (body)}\\\scriptsize t2 = s + i; s = t2\\\scriptsize t3 = i + 1; i = t3; goto L1};
+  \node[boxg,align=left,below right=10mm and 8mm of b1,minimum width=38mm] (b3) {\textbf{B3 (exit)}\\\scriptsize L2: return s};
+  \draw[arr] (b0)--(b1);
+  \draw[arr] (b1)--node[lab,left]{true}(b2);
+  \draw[arr] (b1)--node[lab,right]{false}(b3);
+  \draw[arr,crimson] (b2.north) -- ++(0,4mm) -| ([xshift=-6mm]b1.west) node[lab,pos=0.2,above,crimson]{back edge};
+  \draw[darr,teal] (b0.east) to[bend left=35] node[lab,right,teal]{idom} (b1.east);
+\end{tikzpicture}
+\caption{CFG of \texttt{sum}. B1 is a \emph{loop header}: it dominates B2 (its back edge target is B1 itself). The immediate dominators come from the dominator computation.}\label{fig:cfg}
+\end{figure}
+
+\begin{table}[H]\centering\small\begin{adjustbox}{max width=\textwidth}\input{gen/loop_cfg}\end{adjustbox}\caption{Real CFG data for \texttt{sum} (B4 is the unreachable block after the final \texttt{return 0} that the IR generator appends to every function).}\end{table}
+
+\textbf{Dominators} are computed with the iterative algorithm of Cooper, Harvey and Kennedy over \emph{reverse post-order}: the immediate dominator of a block is found by intersecting the dominator-tree paths of its already-processed predecessors (walking up by RPO number) until no immediate dominator changes. A \emph{natural loop} is identified by a back edge $n\to h$ where $h$ dominates $n$; $h$ is the loop header. Unreachable blocks (such as code after a \code{return}) are flagged and excluded.
+
+\section{Data-flow analyses}
+\subsection{Liveness}
+Applying the equations of Chapter~\ref{ch:background} to \texttt{sum} reaches a fixed point after \LoopLivenessIters{} iterations. The table below is the \emph{real} analysis output; note that the parameter \code{n} is live on entry to the function and stays live through the loop, while \code{t1}, \code{t2}, \code{t3} never cross a block boundary.
+
+\begin{table}[H]\centering\small\begin{adjustbox}{max width=\textwidth}\input{gen/loop_liveness}\end{adjustbox}\caption{Liveness of \texttt{sum}: USE/DEF per block and the fixed-point IN/OUT sets.}\end{table}
+
+The studio's \emph{CFG \& Data-flow} page replays the iteration history so that one can watch the sets converge round by round.
+
+\subsection{Reaching definitions}
+The forward analysis $\mathrm{OUT}[B]=\mathrm{GEN}[B]\cup(\mathrm{IN}[B]\setminus\mathrm{KILL}[B])$, $\mathrm{IN}[B]=\bigcup_{P\in\mathrm{pred}(B)}\mathrm{OUT}[P]$ computes, for every block, which assignments may supply the values read there. It is the basis for def-use reasoning and is displayed in the same page.
+
+\subsection{Pruned SSA}
+SSA construction (Cytron et al.) places $\varphi$ functions at the \emph{iterated dominance frontier} of each variable's definition blocks, then renames variables in a dominator-tree walk. \nova{} prunes: a $\varphi$ is only inserted if the variable is live-in at the join, which avoids dead $\varphi$ nodes. For \texttt{sum} the construction inserts \LoopPhis{} $\varphi$ functions at the loop header, as Listing~\ref{lst:loopssa} shows. A verifier checks that every use has a definition and that each $\varphi$ has one operand per predecessor.
+
+\begin{figure}[H]\centering\begin{minipage}{0.75\textwidth}
+\begingroup\lstset{caption={Real SSA form of \texttt{sum} (\texttt{x\#k} is the $k$-th version of \texttt{x}).},label={lst:loopssa}}\input{gen/loop_ssa}\endgroup
+\end{minipage}\end{figure}
+
+\begin{warnbox}[Scope of SSA in this project]
+The SSA form is \emph{constructed, verified and visualised}, but it is not fed back into code generation: the optimizer's passes work on the ordinary three-address IR, and there is no out-of-SSA translation or SSA-based optimization such as global value numbering. The SSA builder is useful as an analysis and as teaching material; making the optimizer SSA-based is listed as future work in Chapter~\ref{ch:limits}.
+\end{warnbox}
+
+\subsection{Further analyses}
+The analysis module (\code{compiler/src/analysis}) contains four more analyses, all displayed by the \emph{CFG \& Data-flow} page and cross-checked by tests:
+\begin{itemize}
+  \item \textbf{Worklist liveness} --- the same fixed point computed with a worklist instead of round-robin sweeps; tests assert both reach identical sets, which validates each implementation against the other.
+  \item \textbf{Available expressions} --- a forward \emph{must} analysis (intersection over predecessors) over pure expressions; it identifies redundant recomputations.
+  \item \textbf{Constant propagation (Kildall)} --- a worklist solver over the flat lattice $\mathrm{UNDEF} \sqsubset \{\ldots,-1,0,1,\ldots\} \sqsubset \mathrm{NAC}$ (``not a constant''); the meet of two different constants is NAC.
+  \item \textbf{Dead-instruction finder and register-allocation visualiser} --- the first lists what dead-code elimination would delete; the second builds the \emph{interference graph} from liveness and colours it with a Chaitin-style simplify/select heuristic for a chosen number of registers $K$, reporting spills and the minimal $K$ that needs none, with a verifier that no two interfering non-spilled nodes share a colour. (This visualiser is separate from the production linear-scan allocator of Section~\ref{sec:regalloc}.)
+\end{itemize}
+
+\section{The optimizer}
+\subsection{Pass manager}
+The optimizer first runs the interprocedural \textbf{inlining} pass once on the whole program (up to three rounds), then runs the six intra-procedural passes on each function in a loop until a \emph{fixed point} (no pass changed anything) or a round limit of 12. Every individual rewrite is recorded with the pass name, function, the instruction \emph{before} and \emph{after}, a plain-language explanation and the source position. The studio's \emph{Optimization Lab} shows this history, per-pass counts, and lets the user switch passes on and off.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}\toprule
+\textbf{Pass} & \textbf{What it does, and what it deliberately does \emph{not} do}\\ \midrule
+\code{inlining} & Replaces calls to small, non-recursive functions by a renamed copy of their body (Section~\ref{sec:inlining}).\\
+\code{constant\_propagation} & Replaces a variable by the constant or the variable it is known to equal (block-local data flow, plus single-assignment constants function-wide); also performs copy propagation.\\
+\code{constant\_folding} & Evaluates operations on constants at compile time with the \emph{same} arithmetic code as the VM; turns branches on constant conditions into jumps or deletes them. Never folds integer division by zero (it must still trap at run time).\\
+\code{algebraic} & $x+0$, $0+x$, $x-0$, $x\cdot 1$, $1\cdot x$, $x\cdot 0$ (integers), $x-x$ (integers), $x/1$, $x\%1$, reflexive comparisons on integers, and strength reduction $x\cdot 2\to x+x$. Float identities are restricted to IEEE-safe ones (e.g.\ $x\cdot 0\ne 0$ for NaN or infinity).\\
+\code{cse} & Local value numbering: a repeated expression whose operands did not change is replaced by the earlier result; commutative operands are normalised; entries are invalidated on reassignment.\\
+\code{unreachable} & CFG reachability from the entry: removes unreachable blocks, jumps to the next instruction and unused labels.\\
+\code{dce} & Backward liveness: removes pure instructions whose result is never read. Instructions that may trap (integer division by a possibly-zero divisor, array loads, calls) are \emph{kept}.\\ \bottomrule
+\end{tabularx}
+\caption{The seven optimization passes.}
+\end{table}
+
+\subsection{A complete worked example}
+The shipped program \texttt{04\_optimization\_demo} is designed to trigger every pass:
+
+\input{gen/opt_demo_src}
+
+Its unoptimized IR has \OptDemoBefore{} instructions; after \OptDemoRounds{} rounds the optimizer produces just \OptDemoAfter{} --- the whole computation has been evaluated at compile time, and the VM executes \OptDemoVMAfter{} steps instead of \OptDemoVMBefore{}.
+
+\begin{figure}[H]
+\begin{minipage}[t]{0.48\textwidth}\centering\textbf{Before (\OptDemoBefore{} instructions)}\\[-4pt]\begingroup\lstset{style=tiny}\input{gen/opt_demo_ir_before}\endgroup\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}\centering\textbf{After (\OptDemoAfter{} instructions)}\\[-4pt]\begingroup\lstset{style=tiny}\input{gen/opt_demo_ir_after}\endgroup\end{minipage}
+\caption{IR of \texttt{main} before and after optimization (real compiler output).}
+\end{figure}
+
+The first rewrites the compiler recorded were:
+
+\begingroup\small\input{gen/opt_demo_history}\endgroup
+\captionof{table}{First entries of the real optimization history (round, pass, rewrite, reason).}
+
+\shot{ui_optimizer}{The studio's Optimization Lab: pass switches, per-pass impact and the rewrite history.}
+
+\section{Interprocedural inlining}\label{sec:inlining}
+\subsection{Idea}
+A function call has a cost (saving registers, jumping, returning) and, more importantly, it is an \emph{optimization barrier}: constant propagation cannot see through it. \textbf{Inlining} replaces a call with a copy of the callee's body so the other passes can optimize across the former boundary.
+
+\subsection{Algorithm}
+\begin{enumerate}
+  \item \textbf{Eligibility.} A callee is inlined only if it is not \code{main}, has at most 30 IR instructions, and is \emph{not recursive}. Recursion is decided on the call graph: a function is recursive iff it is reachable from itself (this also catches mutual recursion). A caller never grows beyond 600 instructions.
+  \item \textbf{Renaming.} Every callee variable, temporary and label receives a globally unique suffix: \code{sq\_i3.x}, \code{L2\_i3}. The suffix counter is unique across rounds.
+  \item \textbf{Parameter binding.} Parameters become copies of the arguments: \verb|sq_i3.x = a|.
+  \item \textbf{Returns.} \verb|return v| becomes \verb|dst = v; goto inl_end_i3|, and the end label follows the inlined body.
+  \item \textbf{Repeat} up to three rounds so that calls inside inlined bodies are inlined in turn.
+\end{enumerate}
+
+\subsection{Example}
+\begin{figure}[H]
+\begin{minipage}[t]{0.40\textwidth}\input{gen/inl_src}\end{minipage}\hfill
+\begin{minipage}[t]{0.55\textwidth}\textbf{IR before:}\\[-6pt]\begingroup\lstset{style=tiny}\input{gen/inl_ir_before}\endgroup\end{minipage}
+\end{figure}
+After inlining (\InlCount{} calls inlined over the rounds) and the usual passes, the optimizer folds the entire computation: the IR shrinks from \InlBefore{} to \InlAfter{} instructions and \code{main} becomes simply
+
+\begingroup\lstset{style=tiny}\input{gen/inl_ir_after}\endgroup
+
+so \verb|print(hyp(3, 4))| prints \InlOut{} without executing a single call at run time.
+
+\begin{bugbox}
+While writing the pass, the differential tests failed immediately: 177 of 182 C++ tests passed, the 1000-program fuzz run reported mismatches, and the native backend produced assembly the assembler rejected (\texttt{symbol .L3\_L1\_2 is already defined}). The cause was subtle: the inlining site counter was restarted in every round, so a second round could generate a variable name that already existed in the caller --- two logically different variables silently shared one storage location. The fix was a single integer made unique across rounds (and alphanumeric tags so the names are valid assembly labels). After the fix, 2000 of 2000 random programs and 313 native programs agreed again. Without independent engines to compare, this wrong-code bug could have gone unnoticed.
+\end{bugbox}
+
+\begin{warnbox}
+Inlining is intentionally conservative: it never inlines recursive functions (so \code{fib} keeps its calls) and does not use profile information to decide what is hot. A cost model based on call frequency would be a natural extension.
+\end{warnbox}

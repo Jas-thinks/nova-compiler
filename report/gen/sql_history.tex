@@ -1,0 +1,7 @@
+\begin{longtable}{@{}lp{0.72\textwidth}@{}}\toprule
+\textbf{Rule} & \textbf{Effect}\\ \midrule\endhead
+\texttt{predicate\_pushdown} & Conjuncts of WHERE are moved below joins to the input they reference, so fewer rows reach the join; predicates spanning both sides become join conditions (cross join -\textgreater{} inner join).\\
+\texttt{hash\_join} & A join condition of the form left.col = right.col lets the engine build a hash table on one input instead of comparing every pair of rows (O(n+m) instead of O(n*m)).\\
+\texttt{top\_n} & ORDER BY followed by LIMIT only needs the first N rows, so a partial sort is used instead of sorting everything.\\
+\bottomrule
+\end{longtable}

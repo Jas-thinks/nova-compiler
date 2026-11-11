@@ -1,0 +1,32 @@
+\begin{longtable}{@{}llp{0.55\textwidth}@{}}\toprule
+\textbf{Method} & \textbf{Path} & \textbf{Purpose}\\ \midrule\endhead
+GET & \texttt{/api/health} & \\
+GET & \texttt{/api/examples} & \\
+GET & \texttt{/api/passes} & \\
+GET & \texttt{/api/isa} & \\
+GET & \texttt{/api/grammar} & \\
+GET & \texttt{/api/grammar/state/\{n\}} & \\
+POST & \texttt{/api/compile} & \\
+POST & \texttt{/api/execute} & \\
+POST & \texttt{/api/optimize} & \\
+POST & \texttt{/api/debug/start} & \\
+POST & \texttt{/api/debug/step} & \\
+POST & \texttt{/api/debug/continue} & \\
+POST & \texttt{/api/debug/breakpoints} & \\
+POST & \texttt{/api/debug/seek} & \\
+POST & \texttt{/api/debug/reset} & \\
+POST & \texttt{/api/tests/run} & \\
+GET & \texttt{/api/tests/last} & \\
+GET & \texttt{/api/capabilities} & What this build can really do, discovered by compiling a probe program (not a hard-coded claim).\\
+GET & \texttt{/api/explorer/languages} & \\
+POST & \texttt{/api/explorer/c} & \\
+POST & \texttt{/api/explain} & \\
+POST & \texttt{/api/asm} & Native x86-64 backend: assembly for the program, with a register-allocation before/after comparison.\\
+POST & \texttt{/api/sql} & NOVA-SQL compiler + engine: diagnostics, AST, plans before/after optimization, expression bytecode, results.\\
+POST & \texttt{/api/suggest} & Compiler-verified quick fixes for the current diagnostics (no API key needed).\\
+POST & \texttt{/api/autofix} & Iteratively apply verified fixes until the program compiles; returns the steps and a diff.\\
+POST & \texttt{/api/debug/explain} & Rule-based root-cause analysis of a runtime trap from the VM's recorded trace (no API key needed).\\
+POST & \texttt{/api/ai/fix} & Model proposes a fix; the C++ compiler verifies it before it is returned.\\
+POST & \texttt{/api/ai/debug} & Model explains a runtime failure using the VM's recorded trace as evidence.\\
+\bottomrule
+\end{longtable}

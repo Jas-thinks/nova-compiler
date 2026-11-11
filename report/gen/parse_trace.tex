@@ -1,0 +1,30 @@
+\begin{longtable}{@{}rp{0.30\textwidth}lp{0.30\textwidth}@{}}\toprule
+\textbf{\#} & \textbf{Stack (states and symbols)} & \textbf{Look-ahead} & \textbf{Action}\\ \midrule\endhead
+1 & \texttt{\scriptsize 0} & \texttt{fn} & \texttt{\scriptsize shift 4}\\
+2 & \texttt{\scriptsize 0 4 fn} & \texttt{ID} & \texttt{\scriptsize shift 6}\\
+3 & \texttt{\scriptsize 0 4 fn 6 ID} & \texttt{(} & \texttt{\scriptsize shift 7}\\
+4 & \texttt{\scriptsize 0 4 fn 6 ID 7 (} & \texttt{)} & \texttt{\scriptsize reduce 6} \newline {\scriptsize ParamsOpt -\textgreater{} $\varepsilon$}\\
+5 & \texttt{\scriptsize 0 4 fn 6 ID 7 ( 8 ParamsOpt} & \texttt{)} & \texttt{\scriptsize shift 12}\\
+6 & \texttt{\scriptsize \ldots{} fn 6 ID 7 ( 8 ParamsOpt 12 )} & \texttt{\{} & \texttt{\scriptsize reduce 11} \newline {\scriptsize RetOpt -\textgreater{} $\varepsilon$}\\
+7 & \texttt{\scriptsize \ldots{} ID 7 ( 8 ParamsOpt 12 ) 15 RetOpt} & \texttt{\{} & \texttt{\scriptsize shift 25}\\
+8 & \texttt{\scriptsize \ldots{} ( 8 ParamsOpt 12 ) 15 RetOpt 25 \{} & \texttt{print} & \texttt{\scriptsize reduce 20} \newline {\scriptsize StmtList -\textgreater{} $\varepsilon$}\\
+9 & \texttt{\scriptsize \ldots{} ParamsOpt 12 ) 15 RetOpt 25 \{ 33 StmtList} & \texttt{print} & \texttt{\scriptsize shift 54}\\
+10 & \texttt{\scriptsize \ldots{} ) 15 RetOpt 25 \{ 33 StmtList 54 print} & \texttt{(} & \texttt{\scriptsize shift 88}\\
+11 & \texttt{\scriptsize \ldots{} RetOpt 25 \{ 33 StmtList 54 print 88 (} & \texttt{INT\_LIT} & \texttt{\scriptsize shift 154}\\
+12 & \texttt{\scriptsize \ldots{} \{ 33 StmtList 54 print 88 ( 154 INT\_LIT} & \texttt{+} & \texttt{\scriptsize reduce 69} \newline {\scriptsize Primary -\textgreater{} INT\_LIT}\\
+13 & \texttt{\scriptsize \ldots{} \{ 33 StmtList 54 print 88 ( 147 Primary} & \texttt{+} & \texttt{\scriptsize reduce 68} \newline {\scriptsize Postfix -\textgreater{} Primary}\\
+14 & \texttt{\scriptsize \ldots{} \{ 33 StmtList 54 print 88 ( 146 Postfix} & \texttt{+} & \texttt{\scriptsize reduce 66} \newline {\scriptsize UnaryExpr -\textgreater{} Postfix}\\
+15 & \texttt{\scriptsize \ldots{} \{ 33 StmtList 54 print 88 ( 145 UnaryExpr} & \texttt{+} & \texttt{\scriptsize reduce 63} \newline {\scriptsize MulExpr -\textgreater{} UnaryExpr}\\
+16 & \texttt{\scriptsize \ldots{} \{ 33 StmtList 54 print 88 ( 144 MulExpr} & \texttt{+} & \texttt{\scriptsize reduce 59} \newline {\scriptsize AddExpr -\textgreater{} MulExpr}\\
+17 & \texttt{\scriptsize \ldots{} \{ 33 StmtList 54 print 88 ( 143 AddExpr} & \texttt{+} & \texttt{\scriptsize shift 267}\\
+18 & \texttt{\scriptsize \ldots{} StmtList 54 print 88 ( 143 AddExpr 267 +} & \texttt{INT\_LIT} & \texttt{\scriptsize shift 154}\\
+19 & \texttt{\scriptsize \ldots{} print 88 ( 143 AddExpr 267 + 154 INT\_LIT} & \texttt{*} & \texttt{\scriptsize reduce 69} \newline {\scriptsize Primary -\textgreater{} INT\_LIT}\\
+20 & \texttt{\scriptsize \ldots{} print 88 ( 143 AddExpr 267 + 147 Primary} & \texttt{*} & \texttt{\scriptsize reduce 68} \newline {\scriptsize Postfix -\textgreater{} Primary}\\
+21 & \texttt{\scriptsize \ldots{} print 88 ( 143 AddExpr 267 + 146 Postfix} & \texttt{*} & \texttt{\scriptsize reduce 66} \newline {\scriptsize UnaryExpr -\textgreater{} Postfix}\\
+22 & \texttt{\scriptsize \ldots{} print 88 ( 143 AddExpr 267 + 145 UnaryExpr} & \texttt{*} & \texttt{\scriptsize reduce 63} \newline {\scriptsize MulExpr -\textgreater{} UnaryExpr}\\
+23 & \texttt{\scriptsize \ldots{} print 88 ( 143 AddExpr 267 + 370 MulExpr} & \texttt{*} & \texttt{\scriptsize shift 269}\\
+24 & \texttt{\scriptsize \ldots{} ( 143 AddExpr 267 + 370 MulExpr 269 *} & \texttt{INT\_LIT} & \texttt{\scriptsize shift 154}\\
+25 & \texttt{\scriptsize \ldots{} AddExpr 267 + 370 MulExpr 269 * 154 INT\_LIT} & \texttt{)} & \texttt{\scriptsize reduce 69} \newline {\scriptsize Primary -\textgreater{} INT\_LIT}\\
+26 & \texttt{\scriptsize \ldots{} AddExpr 267 + 370 MulExpr 269 * 147 Primary} & \texttt{)} & \texttt{\scriptsize reduce 68} \newline {\scriptsize Postfix -\textgreater{} Primary}\\
+\bottomrule
+\end{longtable}

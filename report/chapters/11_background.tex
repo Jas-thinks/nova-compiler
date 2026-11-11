@@ -1,0 +1,117 @@
+\chapter{Background: the ideas behind the project}
+\label{ch:background}
+This chapter introduces, in plain language, the theory used later. Readers who already know compilers can skim it; the rest of the report refers back to it.
+
+\section{The phases of a compiler}
+A compiler transforms a program through a sequence of \emph{representations}. Each phase consumes one representation and produces the next:
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm and 5mm]
+  \node[box] (src) {Source\\text};
+  \node[box,right=of src] (tok) {Tokens};
+  \node[box,right=of tok] (ast) {Syntax\\tree};
+  \node[box,right=of ast] (typed) {Typed\\tree};
+  \node[boxg,below=9mm of src] (ir) {Intermediate\\code (IR)};
+  \node[boxg,right=of ir] (opt) {Optimized\\IR};
+  \node[boxa,right=of opt] (vm) {Bytecode\\$\to$ VM};
+  \node[boxa,right=of vm] (nat) {Native\\machine code};
+  \draw[arr] (src)--node[lab,above]{lexer}(tok);
+  \draw[arr] (tok)--node[lab,above]{parser}(ast);
+  \draw[arr] (ast)--node[lab,above]{semantic}(typed);
+  \draw[arr] (typed.south) |- ($(typed.south)+(0,-4.5mm)$) -| node[lab,pos=0.2,above]{IR generation} (ir.north);
+  \draw[arr] (ir)--node[lab,above]{passes}(opt);
+  \draw[arr] (opt)--node[lab,above]{codegen}(vm);
+  \draw[arr] (vm)--node[lab,above]{or}(nat);
+\end{tikzpicture}
+\caption{The classical compiler pipeline. Blue: front end (understands the language). Green: middle end (language-independent optimization). Orange: back end (targets a machine).}
+\end{figure}
+
+\begin{description}
+  \item[Front end.] \emph{Lexing} groups characters into tokens (\code{let}, \code{x}, \code{=}, \code{42}). \emph{Parsing} arranges tokens into a tree according to a grammar. \emph{Semantic analysis} resolves names and checks types.
+  \item[Middle end.] The tree is lowered to a simple linear \emph{intermediate representation}. \emph{Analyses} (control flow, liveness, \ldots) discover facts about the program, and \emph{optimizations} use those facts to rewrite it into a faster but equivalent form.
+  \item[Back end.] The IR is turned into instructions for a real or virtual machine, including deciding which values live in which registers.
+\end{description}
+
+\section{Lexical analysis}
+A lexer reads characters and groups them into \emph{tokens} using the \emph{longest-match} rule: the characters \code{<=} form one token, not two. Mathematically a lexer is a deterministic finite automaton; \nova{}'s is hand-written for speed and for precise error messages (it records the line and column of every token).
+
+\section{Parsing and LR(1)}
+A \emph{context-free grammar} is a set of rewriting rules such as
+\[ \textit{Expr} \;\to\; \textit{Expr}\;\texttt{+}\;\textit{Term} \;\mid\; \textit{Term} \]
+A parser decides whether a token sequence can be derived from the start symbol and, if so, builds the derivation tree.
+
+\begin{plain}
+Imagine reading a sentence left to right while keeping a stack of ``things I have recognised so far''. Whenever the top of the stack matches the right-hand side of a rule \emph{and} the next word confirms it is safe, you \emph{reduce} (replace those items by the rule's left-hand side). Otherwise you \emph{shift} (push the next word). An LR parser is an automaton that makes these shift/reduce decisions using a precomputed table.
+\end{plain}
+
+\subsection{LR(1) items and the canonical collection}
+An \textbf{LR(1) item} is a production with a dot marking how much has been recognised, plus one token of look-ahead, written $[A \to \alpha \cdot \beta,\; a]$. The parser generator builds all reachable sets of items using two operations:
+
+\begin{itemize}
+  \item \textbf{Closure}$(I)$: while some $[A \to \alpha \cdot B\beta, a] \in I$ and $B \to \gamma$ is a production, add $[B \to \cdot\gamma,\; b]$ for every $b \in \mathrm{FIRST}(\beta a)$.
+  \item \textbf{Goto}$(I, X)$: advance the dot over symbol $X$ in every item that allows it, then take the closure.
+\end{itemize}
+
+Starting from the closure of $[S' \to \cdot S, \$]$ and applying Goto until nothing new appears gives the \emph{canonical collection}; each set is one parser state. The tables are then filled:
+
+\begin{align*}
+\text{ACTION}[i, a] &= \text{shift } j && \text{if } [A \to \alpha \cdot a\beta, b] \in I_i \text{ and } \mathrm{goto}(I_i, a) = I_j\\
+\text{ACTION}[i, a] &= \text{reduce } A \to \alpha && \text{if } [A \to \alpha \cdot, a] \in I_i\\
+\text{ACTION}[i, \$] &= \text{accept} && \text{if } [S' \to S \cdot, \$] \in I_i\\
+\text{GOTO}[i, A] &= j && \text{if } \mathrm{goto}(I_i, A) = I_j
+\end{align*}
+
+A grammar is LR(1) exactly when this process produces no cell with two different actions (a \emph{conflict}). \nova{}'s grammar has none, which the unit test \code{grammar.isLR1WithoutConflicts} re-checks on every run.
+
+\begin{keybox}
+Canonical LR(1) is the most powerful of the practical bottom-up methods --- it accepts every deterministic context-free language --- but its tables are large (here \LRStates{} states). Real tools use the smaller LALR(1) tables; this project uses the full construction because it is the one taught in the course and because the parse trace is easier to explain.
+\end{keybox}
+
+\section{Semantic analysis and types}
+A grammar cannot express rules like ``a variable must be declared before use'' or ``you cannot add an integer and a string''. Semantic analysis enforces them using \emph{scopes} (nested tables mapping names to declarations) and a \emph{type checker}. \nova{} is \emph{statically typed}: every expression has a type known at compile time and there are no implicit conversions between \code{int} and \code{float}.
+
+\section{Intermediate representations}
+The IR used here is \textbf{three-address code}: every instruction has at most one operator and three operands, e.g. \verb|t1 = a * b|. Complex expressions become sequences of such instructions using compiler-generated temporaries. This form is easy to analyse and to translate to machine code.
+
+\section{Control-flow graphs and data-flow analysis}
+A \textbf{basic block} is a straight-line run of instructions with one entry and one exit. The \textbf{control-flow graph} (CFG) has blocks as nodes and possible jumps as edges. A block $d$ \textbf{dominates} block $n$ if every path from the entry to $n$ goes through $d$; dominators identify loops.
+
+\textbf{Data-flow analysis} computes facts at every program point by iterating equations over the CFG until nothing changes (a \emph{fixed point}). The most important example is \textbf{liveness}: a variable is \emph{live} at a point if its current value may still be read later. Liveness is a \emph{backward} analysis:
+\begin{align*}
+\mathrm{OUT}[B] &= \bigcup_{S \in \mathrm{succ}(B)} \mathrm{IN}[S]\\
+\mathrm{IN}[B]  &= \mathrm{USE}[B] \;\cup\; (\mathrm{OUT}[B] \setminus \mathrm{DEF}[B])
+\end{align*}
+\textbf{Reaching definitions} is the forward analogue: which assignments may supply the value read here.
+
+\section{Static single assignment (SSA)}
+In \textbf{SSA form} every variable is assigned exactly once; wherever control-flow paths merge, a special $\varphi$ (phi) function picks the right incoming version. For example a loop counter becomes \verb|i1 = phi(i0, i2)|. SSA makes many optimizations simpler because each name has a single definition. \nova{} builds \emph{pruned} SSA: $\varphi$ nodes are inserted at iterated dominance frontiers but only for variables that are live there.
+
+\section{Optimization}
+An optimization rewrites the program without changing what it computes. The classical ones used here: \emph{constant folding} (evaluate $2\cdot 3$ at compile time), \emph{constant and copy propagation}, \emph{algebraic simplification} ($x\cdot 1 = x$), \emph{common subexpression elimination}, \emph{dead-code elimination} and \emph{inlining} (replace a call by the callee's body). The \emph{pass manager} runs them repeatedly until no pass changes anything.
+
+\section{Register allocation}
+Machines have a handful of fast registers and a large slow memory. \textbf{Register allocation} decides which program values live in registers. The values' \emph{live ranges} must not overlap if they share a register. \textbf{Linear-scan} allocation (Poletto \& Sarkar) sorts the live intervals by start point, hands out free registers, and when none is free \emph{spills} (keeps in memory) the interval that ends furthest in the future. It is much faster than graph colouring and produces good code.
+
+\section{Virtual machines}
+A \textbf{stack machine} evaluates expressions with an operand stack: \verb|PUSH 2; PUSH 3; ADD| leaves 5. Stack bytecode is compact and easy to generate, which makes it a popular target (the JVM and CPython both use one).
+
+\section{Query processing}
+SQL is \emph{declarative}: it says \emph{what} result is wanted, not \emph{how} to compute it. A query compiler translates the SQL text to a \textbf{logical plan}, a tree of relational operators (scan, filter, join, aggregate, project, sort), then rewrites the tree to an equivalent cheaper one --- for example, applying a filter \emph{before} a join so the join sees fewer rows. SQL also has \textbf{three-valued logic}: comparisons involving \texttt{NULL} yield \emph{unknown}, and \texttt{WHERE} keeps only rows for which the condition is \emph{true}.
+
+\section{Why differential testing}
+How do you know a compiler is correct? Proving it (as in CompCert) is a huge effort. A practical, powerful alternative is \textbf{differential testing}: run two \emph{independent} implementations on the same input and compare the results. If they ever differ, at least one is wrong. Combined with \textbf{fuzzing} (generating thousands of random inputs) this finds bugs that hand-written tests miss. Figure~\ref{fig:diff} shows the principle as used here.
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=10mm]
+  \node[boxk] (gen) {Random program\\generator};
+  \node[box,right=18mm of gen,yshift=14mm] (ref) {Reference\\interpreter};
+  \node[box,right=18mm of gen] (vm) {Compiler $\to$ VM};
+  \node[box,right=18mm of gen,yshift=-14mm] (nat) {Compiler $\to$\\x86-64 native};
+  \node[boxg,right=18mm of vm] (cmp) {Compare\\output};
+  \draw[arr] (gen)--(ref); \draw[arr] (gen)--(vm); \draw[arr] (gen)--(nat);
+  \draw[arr] (ref)--(cmp); \draw[arr] (vm)--(cmp); \draw[arr] (nat)--(cmp);
+  \node[boxr,right=12mm of cmp] (bug) {any difference\\= a bug};
+  \draw[arr] (cmp)--(bug);
+\end{tikzpicture}
+\caption{Differential testing: independent implementations must agree on every generated program.}\label{fig:diff}
+\end{figure}

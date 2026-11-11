@@ -1,0 +1,11 @@
+\begin{lstlisting}[]
+Limit 5 offset 0 keep 3 cols   [rows=2]
+  Sort slot1 DESC (top-5)   [rows=2]
+    Project u.name, SUM(o.amount), COUNT(*)   [rows=2]
+      Filter (SUM(o.amount) > 5)   [rows=2]
+        Aggregate group by u.name compute [SUM(o.amount), COUNT(*)]   [rows=2]
+          HashJoin INNER key=slot0=slot1 on (u.id = o.uid)   [rows=3]
+            Filter (u.age > 20)   [rows=3]
+              Scan users AS u   [rows=4]
+            Scan orders AS o   [rows=4]
+\end{lstlisting}

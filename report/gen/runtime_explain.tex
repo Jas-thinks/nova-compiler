@@ -1,0 +1,7 @@
+\begin{lstlisting}[]
+error      : division by zero (line 8 in main())
+source     : print(a / zero);
+variables  : a=10, zero=0
+root cause : The divisor zero is 0 when line 8 runs (print(a / zero);).
+suggestion : Guard the operation: if (zero != 0) { ... } or handle the zero case explicitly before dividing.
+\end{lstlisting}

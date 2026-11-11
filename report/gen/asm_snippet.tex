@@ -1,0 +1,48 @@
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+nova_fn_fib_rec:
+    pushq %rbp
+    movq %rsp, %rbp
+    subq $80, %rsp
+    movq %r15, -64(%rbp)
+    movq %r14, -72(%rbp)
+    movq %r13, -80(%rbp)
+    movq $0, %r15
+    movq $0, %r14
+    movq $0, %r13
+    movq 16(%rbp), %rax
+    movq %rax, %r15
+    movq %r15, %rax
+    cmpq $2, %rax
+    setl %al
+    movzbq %al, %rax
+    movq %rax, %r14
+    movq %r14, %rax
+    testq %rax, %rax
+    je .L0_L1
+    movq %r15, %rax
+    movq -64(%rbp), %r15
+    movq -72(%rbp), %r14
+    movq -80(%rbp), %r13
+    leave
+    ret
+.L0_L1:
+    movq %r15, %rax
+    subq $1, %rax
+    movq %rax, %r14
+    subq $8, %rsp
+    movq %r14, %rax
+    pushq %rax
+    call nova_fn_fib_rec
+    addq $16, %rsp
+    movq %rax, %r13
+    movq %r15, %rax
+    subq $2, %rax
+    movq %rax, %r14
+    subq $8, %rsp
+    movq %r14, %rax
+    pushq %rax
+    call nova_fn_fib_rec
+    addq $16, %rsp
+    movq %rax, %r15
+    movq %r13, %rax
+\end{lstlisting}

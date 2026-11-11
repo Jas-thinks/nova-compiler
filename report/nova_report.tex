@@ -1,0 +1,159 @@
+% =====================================================================================================
+%  NOVA — Compiler Engineering Platform : project report
+%  Author: Jaswinder Singh (ID 1234090) — Compiler Design project
+%  Build:  cd report && python3 tools/gen_data.py && pdflatex nova_report && pdflatex nova_report (x2)
+% =====================================================================================================
+\documentclass[11pt,a4paper,twoside,openany]{book}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathpazo}
+\usepackage[scaled=0.92]{helvet}
+\renewcommand{\ttdefault}{lmtt}
+\usepackage[a4paper,inner=2.6cm,outer=2.2cm,top=2.6cm,bottom=2.6cm,headheight=15pt]{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs,longtable,array,multirow,makecell,tabularx}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{caption,subcaption}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{amsmath,amssymb}
+\usepackage{etoolbox}
+\usepackage{setspace}
+\usepackage{adjustbox}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bookmark}
+\usepackage{xurl}
+\pgfplotsset{compat=1.17}
+\tcbuselibrary{skins,breakable}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc,backgrounds,decorations.pathreplacing,matrix,shadows,patterns,chains}
+
+% ---------------------------------------------------------------------------------------------- colours
+\definecolor{nova}{HTML}{4D63D9}
+\definecolor{novadark}{HTML}{232B5E}
+\definecolor{novalight}{HTML}{E8ECFF}
+\definecolor{teal}{HTML}{14917A}
+\definecolor{amber}{HTML}{C98600}
+\definecolor{crimson}{HTML}{C0364A}
+\definecolor{ink}{HTML}{1B1F2A}
+\definecolor{grey}{HTML}{6B7280}
+\definecolor{codebg}{HTML}{F6F7FB}
+
+% ---------------------------------------------------------------------------------------------- headings
+\titleformat{\chapter}[display]{\sffamily\bfseries\color{novadark}}{\fontsize{64}{64}\selectfont\color{nova!85}\thechapter}{4pt}{\Huge}[\vspace{4pt}{\color{nova}\titlerule[1.6pt]}]
+\titlespacing*{\chapter}{0pt}{-20pt}{26pt}
+\titleformat{\section}{\sffamily\Large\bfseries\color{novadark}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\sffamily\large\bfseries\color{nova}}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\sffamily\normalsize\bfseries\color{grey}}{\thesubsubsection}{0.8em}{}
+\titlespacing*{\section}{0pt}{16pt}{6pt}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+\renewcommand{\cftchapfont}{\sffamily\bfseries}
+\renewcommand{\cftchappagefont}{\sffamily\bfseries}
+\setlength{\cftbeforechapskip}{6pt}
+
+% ---------------------------------------------------------------------------------------------- headers / footers
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\sffamily\small\color{grey}\nouppercase{\leftmark}}
+\fancyhead[RO]{\sffamily\small\color{grey}\nouppercase{\rightmark}}
+\fancyfoot[LE,RO]{\sffamily\small\thepage}
+\fancyfoot[RE,LO]{\sffamily\small\color{grey}Jaswinder Singh $\cdot$ ID 1234090 $\cdot$ Compiler Design}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{nova!50}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter\ \ #1}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ \ #1}}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[LE,RO]{\sffamily\small\thepage}\fancyfoot[RE,LO]{\sffamily\small\color{grey}Jaswinder Singh $\cdot$ ID 1234090 $\cdot$ Compiler Design}\renewcommand{\headrulewidth}{0pt}}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\setstretch{1.07}
+\setlist{itemsep=2pt,topsep=3pt}
+\captionsetup{font={small,sf},labelfont={bf,color=nova},labelsep=period}
+\renewcommand{\arraystretch}{1.12}
+
+% ---------------------------------------------------------------------------------------------- code listings
+\lstdefinelanguage{nova}{
+  keywords={fn,let,if,else,while,return,print,new},
+  keywords=[2]{int,float,bool,string,true,false},
+  keywords=[3]{to_int,to_float,len},
+  morecomment=[l]{//}, morecomment=[s]{/*}{*/}, morestring=[b]",
+}
+\lstdefinelanguage{sqlx}{
+  morekeywords={SELECT,FROM,WHERE,GROUP,BY,HAVING,ORDER,LIMIT,OFFSET,JOIN,INNER,LEFT,OUTER,CROSS,ON,AND,OR,NOT,NULL,IS,LIKE,IN,BETWEEN,AS,DISTINCT,INSERT,INTO,VALUES,UPDATE,SET,DELETE,CREATE,TABLE,DROP,PRIMARY,KEY,IF,EXISTS,ASC,DESC,CASE,WHEN,THEN,ELSE,END,INT,FLOAT,TEXT,COUNT,SUM,AVG,MIN,MAX,UPPER,LOWER,LENGTH,ABS,COALESCE},
+  morecomment=[l]{--}, morestring=[b]', sensitive=false,
+}
+\lstdefinestyle{base}{
+  basicstyle=\ttfamily\small, backgroundcolor=\color{codebg}, frame=l, framerule=2.2pt, rulecolor=\color{nova!70},
+  xleftmargin=6pt, framexleftmargin=4pt, aboveskip=7pt, belowskip=5pt, breaklines=true, breakatwhitespace=false, columns=fullflexible,
+  keepspaces=true, showstringspaces=false, tabsize=4, commentstyle=\color{teal}\itshape, keywordstyle=\color{nova}\bfseries,
+  keywordstyle=[2]\color{amber}\bfseries, keywordstyle=[3]\color{crimson}, stringstyle=\color{crimson!80!black},
+}
+\lstset{style=base}
+\lstdefinestyle{tiny}{style=base,basicstyle=\ttfamily\scriptsize}
+
+% ---------------------------------------------------------------------------------------------- call-out boxes
+\newtcolorbox{plain}[1][In plain words]{enhanced,breakable,colback=novalight,colframe=nova,coltitle=white,fonttitle=\sffamily\bfseries\small,title={#1},
+  boxrule=0.6pt,arc=3pt,left=7pt,right=7pt,top=5pt,bottom=5pt,attach boxed title to top left={xshift=8pt,yshift*=-2mm},boxed title style={colback=nova,arc=2pt,boxrule=0pt,top=1pt,bottom=1pt}}
+\newtcolorbox{keybox}[1][Key idea]{enhanced,breakable,colback=teal!8,colframe=teal,coltitle=white,fonttitle=\sffamily\bfseries\small,title={#1},
+  boxrule=0.6pt,arc=3pt,left=7pt,right=7pt,top=5pt,bottom=5pt,attach boxed title to top left={xshift=8pt,yshift*=-2mm},boxed title style={colback=teal,arc=2pt,boxrule=0pt,top=1pt,bottom=1pt}}
+\newtcolorbox{warnbox}[1][Honest limitation]{enhanced,breakable,colback=amber!10,colframe=amber,coltitle=white,fonttitle=\sffamily\bfseries\small,title={#1},
+  boxrule=0.6pt,arc=3pt,left=7pt,right=7pt,top=5pt,bottom=5pt,attach boxed title to top left={xshift=8pt,yshift*=-2mm},boxed title style={colback=amber,arc=2pt,boxrule=0pt,top=1pt,bottom=1pt}}
+\newtcolorbox{bugbox}[1][A real bug the tests caught]{enhanced,breakable,colback=crimson!6,colframe=crimson,coltitle=white,fonttitle=\sffamily\bfseries\small,title={#1},
+  boxrule=0.6pt,arc=3pt,left=7pt,right=7pt,top=5pt,bottom=5pt,attach boxed title to top left={xshift=8pt,yshift*=-2mm},boxed title style={colback=crimson,arc=2pt,boxrule=0pt,top=1pt,bottom=1pt}}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\nova}{\textsf{\textbf{NOVA}}}
+\newcommand{\novasql}{\textsf{\textbf{NOVA-SQL}}}
+\newcommand{\shot}[3][0.97]{\begin{figure}[H]\centering\fbox{\includegraphics[width=#1\textwidth]{img/#2.png}}\caption{#3}\end{figure}}
+
+% tikz styles
+\tikzset{
+  box/.style={rectangle,rounded corners=3pt,draw=nova,fill=novalight,thick,minimum height=8mm,minimum width=22mm,align=center,font=\sffamily\small},
+  boxg/.style={rectangle,rounded corners=3pt,draw=teal,fill=teal!10,thick,minimum height=8mm,align=center,font=\sffamily\small},
+  boxa/.style={rectangle,rounded corners=3pt,draw=amber,fill=amber!12,thick,minimum height=8mm,align=center,font=\sffamily\small},
+  boxr/.style={rectangle,rounded corners=3pt,draw=crimson,fill=crimson!8,thick,minimum height=8mm,align=center,font=\sffamily\small},
+  boxk/.style={rectangle,rounded corners=3pt,draw=ink,fill=white,thick,minimum height=8mm,align=center,font=\sffamily\small},
+  arr/.style={-{Stealth[length=2.6mm]},thick,color=ink!80},
+  darr/.style={-{Stealth[length=2.6mm]},thick,dashed,color=grey},
+  lab/.style={font=\sffamily\scriptsize,color=grey},
+}
+
+\input{gen/numbers}
+
+\hypersetup{pdftitle={NOVA Compiler Engineering Platform -- Project Report},pdfauthor={Jaswinder Singh (ID 1234090)},pdfsubject={Compiler Design project},colorlinks=true,linkcolor=nova,urlcolor=nova,citecolor=nova}
+
+\begin{document}
+\input{chapters/00_title}
+\frontmatter
+\input{chapters/01_abstract}
+\tableofcontents
+\listoffigures
+\listoftables
+\mainmatter
+\input{chapters/10_intro}
+\input{chapters/11_background}
+\input{chapters/12_architecture}
+\input{chapters/13_language}
+\input{chapters/14_frontend}
+\input{chapters/15_middle}
+\input{chapters/16_backends}
+\input{chapters/17_sql}
+\input{chapters/18_assistant}
+\input{chapters/19_platform}
+\input{chapters/20_verification}
+\input{chapters/21_performance}
+\input{chapters/22_process}
+\input{chapters/23_limits}
+\appendix
+\input{chapters/30_appendices}
+\backmatter
+\input{chapters/40_glossary}
+\end{document}

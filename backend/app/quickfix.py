@@ -89,7 +89,11 @@ def fixes_for(source: str, d: dict) -> list[dict]:
             elif to_float:
                 add("Convert with to_float(…)", [_edit(loc, _wrap(text, "to_float"))])
         elif "must be bool but has type int" in msg:
-            add(f"Compare explicitly: ({text.strip()} != 0)", [_edit(loc, f"({text.strip()} != 0)")])
+            lines = source.split("\n")
+            a, b = _offset(lines, loc["line"], loc["col"]), _offset(lines, loc.get("endLine", loc["line"]), loc.get("endCol", loc["col"]))
+            enclosed = a > 0 and source[a - 1] == "(" and b < len(source) and source[b] == ")"      # `if (x)` already has the parentheses
+            new = f"{text.strip()} != 0" if enclosed else f"({text.strip()} != 0)"
+            add(f"Compare explicitly: {new}", [_edit(loc, new)])
     elif code == "E-SEM-005":                                                          # int/float operator mix
         m = re.search(r"Operator '([^']+)' cannot be applied to (int|float) and (int|float)", msg)
         if m and m.group(2) != m.group(3):

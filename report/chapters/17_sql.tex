@@ -1,0 +1,158 @@
+\chapter{NOVA-SQL: a SQL compiler and engine}
+\label{ch:sql}
+
+\section{Why a second compiler?}
+SQL is the opposite of NOVA in almost every respect: it is \emph{declarative} (it states what is wanted, not how to compute it), its data are \emph{relations} rather than variables, and its semantics include \emph{missing information} (NULL). Building a compiler for it shows which compiler ideas are universal (parsing, scoped name resolution, static typing, an IR, rule-based optimization, bytecode evaluation) and which are domain-specific (relational algebra, cost-driven rewrites, three-valued logic).
+
+\begin{plain}
+When you write \verb|SELECT name FROM users WHERE age > 20| you do not say how to find the rows. A database turns your sentence into a \emph{plan} --- ``scan the users table, keep rows with age above 20, output the name column'' --- and then rearranges that plan so it does less work. That translation and rearrangement is exactly what a compiler's front end and optimizer do.
+\end{plain}
+
+\section{Pipeline}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=6mm and 4mm,font=\sffamily\small]
+  \node[box,minimum width=20mm] (s) {SQL\\script};
+  \node[box,right=of s,minimum width=20mm] (l) {Lexer};
+  \node[box,right=of l,minimum width=24mm] (p) {Recursive-\\descent parser};
+  \node[boxg,below=9mm of p,minimum width=26mm] (b) {Binder /\\type checker};
+  \node[boxg,left=of b,minimum width=24mm] (pl) {Logical\\plan};
+  \node[boxa,left=of pl,minimum width=24mm] (o) {Rule-based\\optimizer};
+  \node[boxa,below=9mm of o,minimum width=24mm] (c) {Expression\\bytecode};
+  \node[boxr,right=of c,minimum width=24mm] (x) {Executor};
+  \node[boxk,right=of x,minimum width=24mm] (r) {Rows +\\statistics};
+  \draw[arr] (s)--(l); \draw[arr] (l)--(p); \draw[arr] (p)--(b); \draw[arr] (b)--(pl); \draw[arr] (pl)--(o); \draw[arr] (o)--(c); \draw[arr] (c)--(x); \draw[arr] (x)--(r);
+  \node[lab,anchor=north] at ($(b.south)+(0,-1mm)$) {catalog};
+  \node[lab,above=1mm of o] {history of rewrites};
+\end{tikzpicture}
+\caption{The NOVA-SQL pipeline. Each stage reports its output in the JSON result, so the studio can display it.}
+\end{figure}
+
+The whole subsystem is \SQLLOC{} lines of C++ in \code{compiler/src/sql}: \code{sql\_parser.cpp} (lexer + parser), \code{sql\_plan.cpp} (binder, planner, optimizer), \code{sql\_expr.cpp} (values, expression bytecode) and \code{sql\_exec.cpp} (executor and script driver).
+
+\section{The language}
+\begin{lstlisting}[language=sqlx,style=tiny,caption={Supported statements (summary).},label={lst:sqlgrammar}]
+CREATE TABLE [IF NOT EXISTS] t (col INT|FLOAT|TEXT [PRIMARY KEY] [NOT NULL], ...)
+DROP TABLE [IF EXISTS] t
+INSERT INTO t [(cols)] VALUES (expr, ...), (expr, ...)
+UPDATE t SET col = expr [, ...] [WHERE cond]        DELETE FROM t [WHERE cond]
+SELECT [DISTINCT] item [, item ...]
+  FROM t [alias] [ , t2 | CROSS JOIN t2 | [INNER] JOIN t2 ON cond | LEFT [OUTER] JOIN t2 ON cond ]*
+  [WHERE cond] [GROUP BY expr, ...] [HAVING cond]
+  [ORDER BY (expr | alias | ordinal) [ASC|DESC], ...] [LIMIT n [OFFSET m]]
+-- expressions: + - * / %  ||  = <> < <= > >=  AND OR NOT  IS [NOT] NULL  [NOT] LIKE  [NOT] IN (..)
+--              [NOT] BETWEEN  CASE WHEN .. THEN .. [ELSE ..] END  (searched and simple)
+--              UPPER LOWER LENGTH ABS COALESCE   COUNT(*) COUNT SUM AVG MIN MAX
+\end{lstlisting}
+
+\section{Front end}
+\subsection{Parser}
+SQL's grammar is large and irregular, so a hand-written \textbf{recursive-descent parser} with \emph{precedence climbing} is more natural than a table-driven LR parser (the contrast with NOVA's LR(1) parser is itself instructive). Operator precedence follows SQLite, from loosest to tightest: \code{OR}, \code{AND}, \code{NOT}, equality-class (\code{= <> IS LIKE IN BETWEEN}), relational (\code{< <= > >=}), \code{+ -}, \code{* / \%}, \code{||}, unary minus. Keywords are case-insensitive; identifiers are lower-cased.
+
+Errors do not stop the run: after a syntax error the parser skips to the next \code{;} (panic mode at statement granularity) and continues, so a script with two mistakes reports two diagnostics, each with line and column and --- where possible --- a hint. A lexical error stops the script before parsing (a half-lexed token stream is not worth parsing).
+
+\subsection{Binder and type checker}
+The binder resolves names against the \emph{catalog} and assigns every expression a static type from $\{\text{INT},\text{FLOAT},\text{TEXT},\text{NULL}\}$ (NULL is the type of the bare literal and adapts to its context).
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lp{0.62\textwidth}@{}}\toprule
+\textbf{Construct} & \textbf{Rule}\\ \midrule
+\verb|+ - * /| & numeric operands; result FLOAT if either side is FLOAT, else INT\\
+\verb|%| & INT operands only\\
+\verb+||+ & TEXT operands\\
+comparisons, \code{BETWEEN}, \code{IN} & both sides numeric, or both TEXT --- \emph{no implicit conversion between numbers and text}\\
+\code{AND}, \code{OR}, \code{NOT}, \code{WHERE}, \code{ON}, \code{WHEN} & boolean-like (numeric); TEXT rejected\\
+\code{CASE} & branch types unify (numeric widening, or all TEXT)\\
+aggregates & not allowed in WHERE/ON/GROUP BY; no nesting; \code{SUM}/\code{AVG} need numbers\\
+grouping & with GROUP BY or aggregates, every selected column must be a grouping expression or inside an aggregate\\ \bottomrule
+\end{tabular}
+\caption{NOVA-SQL typing rules.}
+\end{table}
+
+Name resolution handles aliases and qualified names (\code{u.id}), reports \emph{ambiguous} unqualified columns, and offers ``Did you mean\ldots'' using the same edit-distance routine as the NOVA compiler. The report's first semantic error per statement is shown; execution continues with the next statement (like \code{psql}), so earlier statements' effects remain.
+
+\begin{lstlisting}[style=tiny,caption={A real NOVA-SQL type error (comparing an INT column with a text literal).},label={lst:sqlerr}]
+E-SQL-103 2:29  Cannot compare INT with TEXT
+      hint: Compare values of the same type.
+\end{lstlisting}
+
+\section{Three-valued logic}
+In SQL a comparison with NULL is neither true nor false but \emph{unknown}. Logical operators extend accordingly, and \texttt{WHERE} keeps only rows whose condition is \emph{true}. The engine implements the standard truth tables (e.g.\ $\mathrm{NULL}\wedge\mathrm{false}=\mathrm{false}$ but $\mathrm{NULL}\wedge\mathrm{true}=\mathrm{NULL}$), \texttt{IN} (which yields NULL when nothing matches and a NULL was seen), and SQLite's arithmetic conventions (integer division truncates toward zero; division or modulo by zero yields NULL; NULLs sort first ascending).
+
+\begin{table}[H]\centering\small\input{gen/sql_nulls}\caption{Real results of NULL-sensitive expressions evaluated by NOVA-SQL.}\end{table}
+
+\begin{keybox}
+\texttt{x NOT IN (1, NULL)} is \emph{never true}: if $x\ne1$ the comparison with the NULL is unknown, so the whole expression is unknown, and \texttt{WHERE} discards it. This is a classic source of bugs in real SQL; the differential fuzzer found no disagreement with SQLite here because the semantics are implemented exactly (see Chapter~\ref{ch:verify}).
+\end{keybox}
+
+\section{The logical plan}
+After binding, a query becomes a tree of relational operators. Operators pass \emph{rows} (arrays of values); expressions refer to input columns by \emph{slot number}, which keeps evaluation fast.
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lp{0.68\textwidth}@{}}\toprule
+\textbf{Operator} & \textbf{Meaning}\\ \midrule
+\code{Scan} & all rows of a table\\
+\code{Filter} & keep rows whose predicate is true\\
+\code{Join} (inner/left/cross; nested-loop or hash) & combine two inputs; left join pads unmatched left rows with NULLs\\
+\code{Aggregate} & group by key expressions and compute \code{COUNT/SUM/AVG/MIN/MAX} per group\\
+\code{Project} & compute the select list (plus hidden columns needed by \code{ORDER BY})\\
+\code{Distinct}, \code{Sort}, \code{Limit} & remove duplicates, order rows, apply \code{LIMIT/OFFSET} and drop hidden columns\\ \bottomrule
+\end{tabular}
+\caption{Logical plan operators.}
+\end{table}
+
+A \texttt{SELECT} is planned bottom-up: FROM/joins, then WHERE, then aggregation (with aggregates and grouping expressions rewritten into references to the aggregate operator's output slots), then HAVING, projection, DISTINCT, ORDER BY, LIMIT. ORDER BY accepts an output ordinal, an output alias, or any expression (which becomes a hidden projected column).
+
+\section{The rule-based optimizer}
+\subsection{Rules}
+Each rule rewrites the plan tree into an equivalent one; every application is recorded (rule name, explanation, plan before, plan after), exactly as in the NOVA optimizer.
+
+\begin{description}
+  \item[\code{constant\_folding}] Literal-only sub-expressions are evaluated once at compile time, with NULL semantics, instead of once per row. A \code{Filter} whose condition becomes constant TRUE is removed (\code{remove\_trivial\_filter}).
+  \item[\code{predicate\_pushdown}] The conjuncts of WHERE are split; a conjunct that references only one side of a join is moved below the join to that input, so fewer rows are joined; a conjunct spanning both sides is merged into the join condition, which turns a \emph{cross join} into an \emph{inner join}. For a \textbf{LEFT JOIN} the rules are subtler and the optimizer gets them right: a WHERE predicate on the \emph{right} side must \emph{not} be pushed below the join (it would filter before the NULL-padding and change the result), whereas an ON conjunct that mentions only the right side \emph{can} be pushed into the right input.
+  \item[\code{hash\_join}] If a join condition contains a conjunct \verb|left.col = right.col|, the engine builds a hash table on the right input and probes it with each left row, instead of comparing every pair. NULL keys never match. The \emph{whole} condition is still evaluated on each candidate pair, so residual predicates and LEFT JOIN padding stay correct.
+  \item[\code{top\_n}] \code{ORDER BY \ldots LIMIT n} needs only the first $n$ rows, so a partial sort replaces a full sort.
+\end{description}
+
+\subsection{Worked example}
+\begin{figure}[H]
+\begin{minipage}[t]{0.49\textwidth}\begingroup\lstset{style=tiny}\input{gen/sql_script}\endgroup\end{minipage}\hfill
+\begin{minipage}[t]{0.47\textwidth}\textbf{Result:}\\[-6pt]\begingroup\lstset{style=tiny}\input{gen/sql_rows}\endgroup\end{minipage}
+\end{figure}
+
+\begin{figure}[H]
+\begin{minipage}[t]{0.47\textwidth}\textbf{Plan as written}\\[-6pt]\begingroup\lstset{style=tiny}\input{gen/sql_plan_before}\endgroup\end{minipage}\hfill
+\begin{minipage}[t]{0.51\textwidth}\textbf{Optimized, with measured row counts}\\[-6pt]\begingroup\lstset{style=tiny}\input{gen/sql_plan_after}\endgroup\end{minipage}
+\caption{Real plans for the query above (the script \code{examples/sql/01\_orders\_report.sql}). The \code{[rows=N]} annotations are measured by the executor.}
+\end{figure}
+
+The \code{users} table has 4 rows and \code{orders} has 4; after pushdown only the 3 users older than 20 enter the join, and the hash join compares 3 pairs instead of $4\times4=16$. The rules that fired:
+
+\begin{table}[H]\centering\small\input{gen/sql_history}\caption{Optimizer history of the query above (real output).}\end{table}
+
+\shot{ui_sql_plan}{The studio's SQL page, plan tab: the optimized plan drawn as a tree; the bars show measured rows per operator.}
+
+\section{Expression bytecode (the SQL-VM)}
+Expressions are compiled once per operator into a tiny stack bytecode and executed per row --- the same idea as the NOVA VM, applied to row expressions. Notice how derived forms are \emph{desugared} into primitives: \code{BETWEEN} becomes two comparisons and an \code{AND}; \code{IN (a,b,c)} becomes a chain of \code{=} joined by \code{OR} (which gives exactly the three-valued behaviour required); \code{NOT LIKE} is \code{LIKE} followed by \code{NOT}. \code{CASE} evaluates all branches eagerly and then selects --- safe because expressions here have no side effects and cannot raise errors (division by zero yields NULL).
+
+\begin{figure}[H]
+\begin{minipage}[t]{0.40\textwidth}\begingroup\lstset{style=tiny}\input{gen/sql_bytecode_src}\endgroup\end{minipage}\hfill
+\begin{minipage}[t]{0.56\textwidth}\begingroup\lstset{style=tiny}\input{gen/sql_bytecode}\endgroup\end{minipage}
+\caption{A query and the real bytecode compiled for its three expressions (\code{slotN} = column N of the operator's input row).}
+\end{figure}
+
+\section{Executor}
+The executor is \emph{materializing}: each operator produces its entire output as a vector of rows. Aggregation uses an ordered map from group key to accumulators (NULL is a valid key; all NULLs form one group); \code{SUM} of integers wraps like NOVA integers, \code{AVG} is a float, an aggregate without \code{GROUP BY} over zero rows still yields one row, and \code{MIN/MAX} use SQLite's total order (NULL $<$ numbers $<$ text). \code{DML} statements are \emph{atomic}: constraint checks (\code{PRIMARY KEY}, \code{NOT NULL}, type coercion INT$\to$FLOAT) run before any row is stored, so a failing \code{INSERT} stores nothing.
+
+\textbf{Service protection.} At most 100{,}000 rows per table, 5{,}000{,}000 row-pairs per join and 5{,}000 result rows returned to a client; exceeding a limit is a normal diagnostic (\texttt{E-SQL-113}), not a crash.
+
+\section{Statistics and the studio}
+Every \code{SELECT} returns per-operator row counts and totals (rows scanned, join pairs compared, hash probes, rows sorted, groups). These make the benefit of an optimization \emph{visible}: the difference between a nested-loop and a hash join shows up as ``pairs compared''.
+
+\shot{ui_sql_optimizer}{The optimizer tab: each rewrite with its explanation and the plan before/after.}
+\shot{ui_sql_bytecode}{The bytecode tab: per-expression compiled code.}
+\shot{ui_sql_error}{A diagnostic with location and suggestion.}
+
+\section{Limitations}
+\begin{warnbox}
+\novasql{} has no subqueries, \code{UNION}, window functions, indexes, transactions or persistence; the optimizer is rule-based, not cost-based (it has no statistics, so it never reorders joins); hash joins use a single key column; and only the first semantic error of a statement is reported. Reported honestly in Chapter~\ref{ch:limits}.
+\end{warnbox}

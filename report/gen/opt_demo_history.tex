@@ -1,0 +1,22 @@
+\begin{longtable}{@{}rp{0.2\textwidth}p{0.28\textwidth}p{0.36\textwidth}@{}}\toprule
+\textbf{Rd} & \textbf{Pass} & \textbf{Before} $\rightarrow$ \textbf{after} & \textbf{Explanation}\\ \midrule\endhead
+1 & \texttt{constant\_propagation} & \texttt{\scriptsize t3 = base * scale} $\rightarrow$ \texttt{\scriptsize t3 = t2 * 2} & {\scriptsize Dataflow facts: base is a copy of t2; scale is the constant 2, so uses are replaced by the known value.}\\
+1 & \texttt{constant\_propagation} & \texttt{\scriptsize t5 = base * scale} $\rightarrow$ \texttt{\scriptsize t5 = t2 * 2} & {\scriptsize Dataflow facts: base is a copy of t2; scale is the constant 2, so uses are replaced by the known value.}\\
+1 & \texttt{constant\_propagation} & \texttt{\scriptsize if\_false debug goto L1} $\rightarrow$ \texttt{\scriptsize if\_false false goto L1} & {\scriptsize Dataflow facts: debug is the constant false, so uses are replaced by the known value.}\\
+1 & \texttt{constant\_propagation} & \texttt{\scriptsize print unused} $\rightarrow$ \texttt{\scriptsize print t6} & {\scriptsize Dataflow facts: unused is a copy of t6, so uses are replaced by the known value.}\\
+1 & \texttt{constant\_propagation} & \texttt{\scriptsize print t} $\rightarrow$ \texttt{\scriptsize print t8} & {\scriptsize Dataflow facts: t is a copy of t8, so uses are replaced by the known value.}\\
+1 & \texttt{constant\_folding} & \texttt{\scriptsize t1 = 4 * 8} $\rightarrow$ \texttt{\scriptsize t1 = 32} & {\scriptsize Both operands are compile-time constants, so 4 * 8 is evaluated by the compiler.}\\
+1 & \texttt{constant\_folding} & \texttt{\scriptsize t6 = 7 * 6} $\rightarrow$ \texttt{\scriptsize t6 = 42} & {\scriptsize Both operands are compile-time constants, so 7 * 6 is evaluated by the compiler.}\\
+1 & \texttt{constant\_folding} & \texttt{\scriptsize if\_false false goto L1} $\rightarrow$ \texttt{\scriptsize goto L1} & {\scriptsize The condition is constant false, so the branch is always taken: it becomes an unconditional jump.}\\
+1 & \texttt{algebraic} & \texttt{\scriptsize t3 = t2 * 2} $\rightarrow$ \texttt{\scriptsize t3 = t2 + t2} & {\scriptsize Strength reduction: x * 2 = x + x (an addition is cheaper than a multiplication).}\\
+1 & \texttt{algebraic} & \texttt{\scriptsize t4 = t3 + 0} $\rightarrow$ \texttt{\scriptsize t4 = t3} & {\scriptsize x + 0 = x}\\
+1 & \texttt{algebraic} & \texttt{\scriptsize t5 = t2 * 2} $\rightarrow$ \texttt{\scriptsize t5 = t2 + t2} & {\scriptsize Strength reduction: x * 2 = x + x (an addition is cheaper than a multiplication).}\\
+1 & \texttt{algebraic} & \texttt{\scriptsize t8 = t7 * 2} $\rightarrow$ \texttt{\scriptsize t8 = t7 + t7} & {\scriptsize Strength reduction: x * 2 = x + x (an addition is cheaper than a multiplication).}\\
+1 & \texttt{algebraic} & \texttt{\scriptsize t9 = x - x} $\rightarrow$ \texttt{\scriptsize t9 = 0} & {\scriptsize x - x = 0}\\
+1 & \texttt{algebraic} & \texttt{\scriptsize t10 = y \% 1} $\rightarrow$ \texttt{\scriptsize t10 = 0} & {\scriptsize x \% 1 = 0}\\
+1 & \texttt{cse} & \texttt{\scriptsize t5 = t2 + t2} $\rightarrow$ \texttt{\scriptsize t5 = t3} & {\scriptsize The same expression was already computed into t3 and neither operand changed since, so the value is reused.}\\
+1 & \texttt{unreachable} & \texttt{\scriptsize print t6} $\rightarrow$ \texttt{\scriptsize (removed)} & {\scriptsize No path from the function entry reaches this basic block (control-flow reachability analysis).}\\
+1 & \texttt{unreachable} & \texttt{\scriptsize goto L1} $\rightarrow$ \texttt{\scriptsize (removed)} & {\scriptsize The jump targets the very next instruction, so it has no effect.}\\
+1 & \texttt{unreachable} & \texttt{\scriptsize L1:} $\rightarrow$ \texttt{\scriptsize (removed)} & {\scriptsize No jump refers to this label any more.}\\
+\bottomrule
+\end{longtable}

@@ -1,0 +1,27 @@
+\begin{lstlisting}[]
+function main:
+    t1 = 4 * 8
+    t2 = t1 + 2
+    base = t2
+    scale = 2
+    t3 = base * scale
+    t4 = t3 + 0
+    x = t4
+    t5 = base * scale
+    y = t5
+    t6 = 7 * 6
+    unused = t6
+    debug = false
+    if_false debug goto L1
+    print unused
+L1:
+    t7 = x + y
+    t8 = t7 * 2
+    t = t8
+    print t
+    t9 = x - x
+    print t9
+    t10 = y % 1
+    print t10
+    return
+\end{lstlisting}

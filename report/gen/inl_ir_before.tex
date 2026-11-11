@@ -1,0 +1,16 @@
+\begin{lstlisting}[]
+function sq:
+    t1 = x * x
+    return t1
+    return 0
+function hyp:
+    t1 = call sq(a)
+    t2 = call sq(b)
+    t3 = t1 + t2
+    return t3
+    return 0
+function main:
+    t1 = call hyp(3, 4)
+    print t1
+    return
+\end{lstlisting}

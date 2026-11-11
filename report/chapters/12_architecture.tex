@@ -1,0 +1,131 @@
+\chapter{System architecture}
+\label{ch:arch}
+
+\section{The big picture}
+\nova{} is organised in three layers, so that each layer can be tested on its own:
+
+\begin{enumerate}
+  \item \textbf{The compiler core} (\code{novac}, C++17). A command-line program that reads source on standard input and writes a complete JSON report on standard output. It contains \emph{all} the compiler logic.
+  \item \textbf{The service} (FastAPI, Python). Validates requests, runs \code{novac} as a sandboxed child process, manages debugger sessions, and hosts the assistant and the language server.
+  \item \textbf{The clients}: the web studio (React/TypeScript) and any LSP-capable editor.
+\end{enumerate}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=8mm and 10mm, every node/.style={font=\sffamily\small}]
+  % clients
+  \node[box,minimum width=34mm] (studio) {Web studio\\{\scriptsize React + TypeScript, 19 pages}};
+  \node[box,minimum width=34mm,right=14mm of studio] (editor) {Code editor\\{\scriptsize VS Code / any LSP client}};
+  % service
+  \node[boxg,minimum width=34mm,below=14mm of studio] (api) {REST API\\{\scriptsize FastAPI, validation, sessions}};
+  \node[boxg,minimum width=34mm,below=14mm of editor] (lsp) {Language server\\{\scriptsize LSP over stdio}};
+  \node[boxa,minimum width=34mm,below=14mm of api] (sb) {Sandboxed subprocess\\{\scriptsize argv only, timeout, rlimits}};
+  \node[boxa,minimum width=34mm,below=14mm of lsp] (ast) {Assistant\\{\scriptsize quick fixes, auto-fix, analysis}};
+  % core
+  \node[boxk,minimum width=84mm,below=14mm of $(sb)!0.5!(ast)$,fill=novalight,draw=novadark,very thick] (core) {\textbf{novac} --- C++17 compiler core\\{\scriptsize NOVA: lexer $\cdot$ LR(1) $\cdot$ semantic $\cdot$ IR $\cdot$ optimizer $\cdot$ VM $\cdot$ x86-64 \quad|\quad NOVA-SQL: parser $\cdot$ binder $\cdot$ planner $\cdot$ executor}};
+  \node[boxk,right=12mm of core,minimum width=22mm] (gcc) {gcc\\{\scriptsize assemble + link}};
+  \draw[arr] (studio)--node[lab,right]{HTTP/JSON}(api);
+  \draw[arr] (editor)--node[lab,right]{JSON-RPC}(lsp);
+  \draw[arr] (api)--(sb); \draw[arr] (lsp)--(ast); \draw[arr] (api)--(ast);
+  \draw[arr] (sb.south) -- (sb.south |- core.north);
+  \draw[arr] (ast.south) -- (ast.south |- core.north);
+  \draw[darr] (core)--(gcc);
+\end{tikzpicture}
+\caption{System architecture. All compiler intelligence lives in \code{novac}; the service and the clients only move JSON.}\label{fig:arch}
+\end{figure}
+
+\begin{keybox}
+The compiler is a \emph{pure function} from source text to a JSON report. This makes it trivial to test (feed text, compare JSON), safe to sandbox (a child process with no state), and easy to reuse from a service, a test suite, a fuzzer and a language server without any code duplication.
+\end{keybox}
+
+\section{What happens when you press ``Compile''}
+Figure~\ref{fig:seq} follows one request through the system.
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\sffamily\small]
+  \foreach \x/\n in {0/Studio,4.2/FastAPI,8.4/Sandbox,12.4/novac}{
+    \node[box,minimum width=24mm] at (\x,0) (n\x) {\n};
+    \draw[dashed,grey] (\x,-0.5) -- (\x,-7.2);
+  }
+  \draw[arr] (0,-1.2) -- node[above,lab]{POST /api/compile\{source, passes\}} (4.2,-1.2);
+  \node[lab,anchor=west] at (4.3,-1.75) {validate: size $\le$ 64 KiB, known pass ids};
+  \draw[arr] (4.2,-2.4) -- node[above,lab]{argv + source} (8.4,-2.4);
+  \node[lab,anchor=west] at (8.5,-2.95) {timeout, rlimits, output cap, private cwd};
+  \draw[arr] (8.4,-3.5) -- node[above,lab]{stdin} (12.4,-3.5);
+  \node[lab,anchor=east] at (12.3,-4.05) {lex, parse, analyse, optimize, run};
+  \draw[arr] (12.4,-4.6) -- node[above,lab]{JSON report} (8.4,-4.6);
+  \draw[arr] (8.4,-5.1) -- (4.2,-5.1);
+  \node[lab,anchor=west] at (4.3,-5.65) {parse + shape the response};
+  \draw[arr] (4.2,-6.2) -- node[above,lab]{tokens, AST, IR, \ldots} (0,-6.2);
+  \node[lab,anchor=east] at (-0.1,-6.75) {render the stage views};
+\end{tikzpicture}
+\caption{Request path for one compilation.}\label{fig:seq}
+\end{figure}
+
+\section{Responsibilities}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}lX@{}}\toprule
+\textbf{Module} & \textbf{Responsibility}\\ \midrule
+compiler/src/lexer & Hand-written scanner producing positioned tokens and lexical diagnostics.\\
+compiler/src/parser & LR(1) table generator (\code{lr1.cpp}, \code{grammar.cpp}) and the table-driven parser with error recovery (\code{parser.cpp}).\\
+compiler/src/ast, semantic & Parse tree to typed AST; scopes, symbols, type checking, diagnostics.\\
+compiler/src/ir & AST to three-address IR.\\
+compiler/src/optimizer & Pass manager, seven optimization passes, rewrite history.\\
+compiler/src/analysis & CFG, dominators, liveness, reaching definitions, pruned SSA and their JSON artifacts.\\
+compiler/src/codegen & IR to VM bytecode, static bytecode verifier, IR to x86-64 assembly (\code{x86.cpp}).\\
+compiler/src/vm & Bytecode VM (with trace snapshots) and the independent reference interpreter.\\
+compiler/src/sql & Complete NOVA-SQL compiler and engine.\\
+compiler/src/testing & Random program generator, failure minimizer, fuzz drivers.\\
+compiler/runtime & C runtime linked into native programs (printing, traps, heap, strings).\\
+backend/app & REST API, sandbox, debugger sessions, quick fixes, AI assistance, language server.\\
+frontend/src & Studio pages, API client, state, visualisations.\\ \bottomrule
+\end{tabularx}
+\caption{Module responsibilities.}
+\end{table}
+
+\section{Technology choices}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}p{0.17\textwidth}p{0.36\textwidth}X@{}}\toprule
+\textbf{Layer} & \textbf{Technology} & \textbf{Why}\\ \midrule
+Compiler core & C++17, CMake & speed, control over memory, no runtime dependencies\\
+Native runtime & C (gcc) & smallest possible runtime linked into generated programs\\
+Service & Python 3.12, FastAPI, Pydantic & concise request validation and process orchestration\\
+Studio & React, TypeScript, Vite, Tailwind & typed UI, fast builds\\
+Editor widgets & Monaco, React Flow & code editor and graph rendering (AST, CFG)\\
+Tests & CTest-style C++ harness, pytest, Vitest & one runner per language\\
+Verification oracles & SQLite (Python \code{sqlite3}), reference interpreter & independent implementations\\
+Quality tooling & ASan, UBSan, GitHub Actions workflow & memory errors and undefined behaviour\\ \bottomrule
+\end{tabularx}
+\caption{Technology stack. No parser generators, no code-generation libraries, no LLVM: all compiler logic is written for this project.}
+\end{table}
+
+\section{Safety model of the service}
+Running a compiler for strangers is risky: programs can loop forever, allocate without bound, or print gigabytes. The service therefore runs every external process through one function (\code{sandbox.run\_limited}) that provides:
+
+\begin{itemize}
+  \item \textbf{argv-only execution} --- a shell is never involved, so there is no shell injection;
+  \item a \textbf{wall-clock timeout} (10~s) enforced by killing the whole process group;
+  \item a \textbf{hard output cap} (64 MiB; the child is killed when exceeded);
+  \item \textbf{CPU and address-space rlimits} (1~GiB), core dumps disabled, a scrubbed environment and a private working directory;
+  \item \textbf{request limits}: 64~KiB of source, at most 5{,}000{,}000 VM steps, 20{,}000 trace snapshots, 25 concurrent debugger sessions with a 30-minute lifetime.
+\end{itemize}
+
+\begin{warnbox}
+There is \emph{no} filesystem, network or system-call isolation (no namespaces, seccomp or containers). The \code{/api/health} endpoint reports this openly. Before exposing the service to untrusted users it must be run inside a container or virtual machine.
+\end{warnbox}
+
+\section{Build, run and automation}
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lp{0.68\textwidth}@{}}\toprule
+\textbf{Script} & \textbf{Purpose}\\ \midrule
+\code{scripts/dev.sh} & Builds the compiler, installs dependencies, starts the backend and the Vite dev server, prints the URL.\\
+\code{scripts/build.sh} / \code{serve.sh} & Production build; FastAPI serves the built studio on one port.\\
+\code{scripts/test.sh} & Every suite: C++ tests, 1000-program fuzz, native-vs-VM, SQL-vs-SQLite, pytest, TypeScript check and Vitest.\\
+\code{scripts/sanitize.sh} & AddressSanitizer + UndefinedBehaviorSanitizer build; unit tests, fuzzers and SQL fuzzers under sanitizers.\\
+\code{scripts/bench.sh} & Native vs CPython, register allocation on/off, inlining on/off (best of five runs).\\
+\code{scripts/nova-native.sh} & Compile a NOVA file to a native executable.\\
+\code{scripts/native\_diff.sh} & Native output must equal VM output on every example and N random programs.\\
+\code{scripts/sql\_fuzz.py} & SQLite differential fuzzer and garbled-input mutation fuzzer for NOVA-SQL.\\
+\code{scripts/nova-lsp.sh} & Start the language server on stdio.\\ \bottomrule
+\end{tabular}
+\caption{Automation scripts.}
+\end{table}

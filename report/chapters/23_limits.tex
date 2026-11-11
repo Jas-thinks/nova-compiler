@@ -1,0 +1,44 @@
+\chapter{Limitations, future work and conclusion}
+\label{ch:limits}
+
+\section{Honest limitations}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}p{0.2\textwidth}X@{}}\toprule
+\textbf{Area} & \textbf{Limitation}\\ \midrule
+Language & No garbage collector (allocations live until exit and are capped); strings are immutable byte strings; arrays are single-level \code{int[]}, \code{float[]}, \code{bool[]} (no nesting, structs or generics); only first-order functions; no modules.\\
+Parsing & Canonical LR(1) tables are large and are rebuilt on every start (about \LRBuildMs{} ms); panic-mode recovery can still report a misleading follow-on error.\\
+Analyses & SSA is constructed and verified but is \emph{not} used by the optimizer; the data-flow module is separate from the optimizer's own liveness (both tested).\\
+Optimizer & Passes are intra-procedural except inlining; no loop optimizations (invariant code motion, strength reduction of induction variables); inlining ignores profile information and skips recursive functions.\\
+Native back end & Floats are not register-allocated; one live interval per variable; no peephole optimizer or compare-and-branch fusion; x86-64 Linux only; relies on \code{gcc} to assemble and link.\\
+NOVA-SQL & No subqueries, \code{UNION}, window functions, indexes, transactions or persistence; rule-based (no cost model, no join reordering); single-column hash keys; first error per statement.\\
+Assistant & Rules cover common diagnostics only; the LLM path was exercised only with a scripted model (no real API key in the test environment).\\
+Tooling & The VS Code client has never run in a real VS Code session; CI has never run on a hosted service; the sandbox has no container-level isolation.\\
+Evidence & Differential testing shows agreement on generated inputs, not a proof; reference interpreter and compiler share the front end; all benchmarks are single-machine measurements.\\ \bottomrule
+\end{tabularx}
+\caption{Known limitations, stated plainly.}
+\end{table}
+
+\section{Future work}
+\begin{enumerate}
+  \item \textbf{SSA-based optimization}: global value numbering and sparse conditional constant propagation on the existing SSA form, with out-of-SSA translation.
+  \item \textbf{Loop optimizations}: loop-invariant code motion and induction-variable strength reduction using the dominator and loop information already computed.
+  \item \textbf{Better native code}: register-allocate floats using caller-saved registers around call-free regions, interval splitting, a peephole pass, and compare-and-branch fusion; a second target (AArch64).
+  \item \textbf{Memory management}: a mark-and-sweep garbage collector with precise stack maps, then structs and nested arrays.
+  \item \textbf{Cost-driven inlining}: use call-frequency estimates from a profile run.
+  \item \textbf{NOVA-SQL}: subqueries (decorrelation), indexes, statistics, join ordering by dynamic programming, window functions.
+  \item \textbf{Assistant}: evaluate real-model fix rates on a corpus of broken programs; add fixes for wrong argument counts using the callee's signature.
+  \item \textbf{Hardening}: run the service in containers with seccomp; run CI on a hosted service; test the VS Code client.
+  \item \textbf{Formal checking}: translation validation of individual optimization passes.
+\end{enumerate}
+
+\section{Lessons learned}
+\begin{itemize}
+  \item \textbf{Independent oracles are worth more than clever tests.} Every serious bug was found by disagreement between two implementations, not by a hand-written assertion.
+  \item \textbf{Make the invariants executable.} ``The result must equal the reference interpreter'' became a function that runs thousands of times a minute.
+  \item \textbf{Measure, then claim.} The register allocator helps one benchmark and not another; reporting both is more useful than reporting a headline number.
+  \item \textbf{Design for visibility.} Because every phase emits structured JSON, the studio, the tests, the language server and the assistant all reuse the same data instead of re-deriving it.
+  \item \textbf{Say what is not done.} A project is more credible when its limits are explicit.
+\end{itemize}
+
+\section{Conclusion}
+This project built two complete compilers --- an imperative language compiled to a bytecode VM and to native x86-64 code, and a declarative SQL compiler with a query optimizer --- together with a verified assistant, a language server and a visual studio. Its distinguishing feature is not any single component but the way correctness is established: the reference interpreter, the VM, the optimized VM and native code agree on \FuzzN{} random programs (\FuzzPassed{} identical), native code agrees with the VM on \NativeDiffPass{} programs, and NOVA-SQL agrees with SQLite on \SQLFuzzPass{} of \SQLFuzzTotal{} random queries, with sanitizer builds clean and garbled inputs never crashing the compilers. The same verification found and fixed real defects along the way. Native code runs about \BenchFibVspy$\times$ faster than CPython on a recursive benchmark, inlining gives \BenchInlineGain$\times$ on a call-heavy loop, and the report states where the register allocator does not help and what remains unverified. The result is a platform that is both a working compiler toolchain and a transparent teaching instrument for how compilers are built and, above all, how they are trusted.

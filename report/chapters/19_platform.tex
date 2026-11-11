@@ -1,0 +1,60 @@
+\chapter{The web platform}
+\label{ch:platform}
+
+\section{Backend service}
+The service (\code{backend/app}) is a FastAPI application. Its job is deliberately thin: validate the request, run the compiler as a sandboxed child process, shape the JSON, and keep a little state (debugger sessions). It exposes \NumEndpoints{} endpoints (Table~\ref{tab:endpoints}).
+
+\begingroup\small
+\input{gen/endpoints}
+\endgroup
+\captionof{table}{All REST endpoints (generated from the source).}\label{tab:endpoints}
+
+\subsection{Request validation}
+Request bodies are Pydantic models. Source text is limited to 64 KiB, pass names must come from the known set, step and trace counts are bounded, and unknown fields are rejected with a structured \code{422} response listing the field and the reason. Compiler failures (missing binary, timeout, malformed output) become explicit HTTP errors (503, 408, 500) instead of stack traces.
+
+\subsection{The compile response}
+A single \code{/api/compile} response carries everything the studio needs: per-stage status and timing, tokens, the full parse trace and tree, the AST, symbol tables, the IR before and after optimization, the optimization history and per-pass counts, CFG/data-flow/SSA artifacts per function, bytecode for the baseline and optimized programs, and, if requested, execution results from the baseline VM, the optimized VM and the reference interpreter together with the flags \code{optimizationPreservesBehavior} and \code{matchesReference}.
+
+\subsection{Debugger sessions}
+\code{/api/debug/start} runs the program once with tracing and stores the recorded snapshots in a \emph{session}. The other debug endpoints (\code{step}, \code{continue}, \code{breakpoints}, \code{seek}, \code{reset}) only move a cursor over the recording, which is why backward stepping costs nothing. Sessions expire after 30 minutes and at most 25 exist at once (the oldest is evicted).
+
+\subsection{Serving the studio}
+In production mode (\code{scripts/serve.sh}) the same FastAPI process serves the built studio from \code{frontend/dist}; in development the Vite dev server proxies \code{/api} to the backend.
+
+\section{The studio}
+The studio is a single-page React application written in TypeScript. A shared store (\code{NovaContext}) holds the current source (persisted in the browser's local storage), the pass switches, the latest compile result and a \emph{stale} flag that turns on when the source changes after a compile. Pages are lazy-loaded; heavy components (Monaco editor, React Flow graphs) load on demand. Every page renders data that came from the compiler: nothing is simulated.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}\toprule
+\textbf{Page} & \textbf{What it shows}\\ \midrule
+Dashboard & project overview, live capability probe, last test run, pipeline timing\\
+Compiler Playground & Monaco editor with live diagnostics, pipeline bar, stage inspector, output and problems\\
+Learn Mode & guided lessons that load examples and point at the right page\\
+Compiler Explorer & NOVA plus an optional C viewer using the installed system compiler (compile-only)\\
+AI Assistant & verified quick fixes, auto-fix, runtime analysis, optional Claude (Chapter~\ref{ch:assistant})\\
+SQL Compiler & NOVA-SQL script editor, results, plan tree, optimizer history, bytecode, AST\\
+Lexical / Syntax / AST / Semantic & token table; LR(1) parse trace with stack, input and action; FIRST/FOLLOW; automaton states and tables; parse tree; AST graph; scope and symbol tables\\
+Intermediate Repr. & IR before and after optimization with explanations\\
+CFG \& Data-flow & basic blocks, edges, dominators, loops, liveness and reaching definitions with iteration replay, SSA and $\varphi$ nodes\\
+Optimization Lab & per-pass switches, measured before/after, rewrite history\\
+Target Code (VM) / Native x86-64 & bytecode listing and instruction set / assembly with register-allocation statistics\\
+Debugger / Runtime Memory & breakpoints, step in/over/back, call stack, locals and operand stack\\
+Compiler Tests / Documentation & run the test suites and fuzzers from the browser; specifications\\ \bottomrule
+\end{tabularx}
+\caption{The 19 pages of the studio.}
+\end{table}
+
+\shot{ui_dashboard}{Dashboard: feature overview, live capability probe and project status.}
+\shot{ui_playground}{Compiler Playground: editor, pipeline bar with per-stage timing, and the stage inspector (here the token table).}
+\shot{ui_syntax}{Syntax Analysis: step through the LR(1) parse trace; the stack, remaining input and the explanation of each action are shown.}
+\shot{ui_ast}{AST Explorer: the typed syntax tree as an interactive graph.}
+\shot{ui_semantic}{Semantic Analysis: scopes and symbol tables with read/write counts.}
+\shot{ui_ir}{Intermediate representation before and after optimization.}
+\shot{ui_analysis}{CFG \& Data-flow: basic blocks and edges (colour-coded true/false/jump/fall-through; unreachable blocks in red), with liveness, reaching definitions and SSA tabs.}
+\shot{ui_target}{Target Code (VM): the bytecode listing of the optimized program with the instruction-set reference.}
+\shot{ui_memory}{Runtime Memory: frames, slots and the operand stack of the running program.}
+\shot{ui_tests}{Compiler Tests: run the C++ unit tests, the differential fuzzer and the invalid-program fuzzer from the browser.}
+\shot{ui_learn}{Learn Mode: guided lessons.}
+
+\section{Quality of the user interface}
+The UI was checked by driving it with a headless browser (Playwright with Chrome): every page was loaded, example programs were selected from the drop-downs, buttons such as \emph{Run}, \emph{Auto-fix all} and the SQL tabs were clicked, and screenshots were taken; the browser console reported \textbf{zero errors} across the run. The screenshots in this report are those captures. Frontend unit tests (\FrontendTests{} tests with Vitest and Testing Library) cover the SQL page, the assistant page (including the rendering of inline code and the ``not configured'' state), the data-flow view, the layout algorithms and the API client.

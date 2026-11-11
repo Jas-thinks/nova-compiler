@@ -1,0 +1,23 @@
+\begin{lstlisting}[]
+(a.v BETWEEN 5 AND 50)
+    000  LOAD slot1
+    001  PUSH 5
+    002  GE
+    003  LOAD slot1
+    004  PUSH 50
+    005  LE
+    006  AND
+CASE WHEN (a.v > 10) THEN 'hi' ELSE 'lo' END
+    000  LOAD slot1
+    001  PUSH 10
+    002  GT
+    003  PUSH 'hi'
+    004  PUSH 'lo'
+    005  CASE 1 arm(s) + ELSE
+((a.v * 2) + 1)
+    000  LOAD slot1
+    001  PUSH 2
+    002  MUL
+    003  PUSH 1
+    004  ADD
+\end{lstlisting}

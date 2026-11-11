@@ -1,0 +1,8 @@
+\begin{lstlisting}[]
+benchmark  noregalloc_ms  regalloc_ms   cpython_ms   vs_noreg vs_cpython
+fib35                74           54          654      1.37x      12.1x
+primes               32           33          388       .96x      11.7x
+
+benchmark     noinline_ms    inline_ms   cpython_ms    speedup
+inline                103           47          n/a      2.19x
+\end{lstlisting}

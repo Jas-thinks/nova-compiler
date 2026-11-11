@@ -1,0 +1,53 @@
+\chapter*{Glossary}
+\addcontentsline{toc}{chapter}{Glossary}
+\markboth{Glossary}{Glossary}
+\begin{description}[style=nextline,leftmargin=1.2cm,font=\sffamily\bfseries\color{nova}]
+\item[Abstract syntax tree (AST)] A tree representing the structure of a program with the grammar's bookkeeping removed.
+\item[Aggregate (SQL)] A function such as \code{SUM} or \code{COUNT} that combines many rows into one value.
+\item[ASan / UBSan] AddressSanitizer / UndefinedBehaviorSanitizer: compiler instrumentation that detects memory errors and undefined behaviour at run time.
+\item[Back edge] A CFG edge whose target dominates its source; it closes a loop.
+\item[Basic block] A straight-line run of instructions with one entry and one exit.
+\item[Binder] The SQL compiler phase that resolves names against the catalog and assigns types.
+\item[Bytecode] Compact instructions for a virtual machine rather than a real CPU.
+\item[Callee-saved register] A register a called function must restore before returning; its value survives calls.
+\item[Canonical LR(1)] The most powerful table-driven bottom-up parsing method with one token of look-ahead, using full item sets.
+\item[Catalog] The database's record of tables and columns.
+\item[CFG] Control-flow graph: basic blocks connected by possible jumps.
+\item[Common subexpression elimination] Reusing a computed value instead of computing it again.
+\item[Conflict (parser)] A table cell needing two different actions; a grammar with none is LR(1).
+\item[Constant folding] Evaluating constant expressions at compile time.
+\item[Constant propagation] Replacing a variable by the constant it is known to hold.
+\item[Dead-code elimination] Removing computations whose result is never used.
+\item[Differential testing] Comparing independent implementations on the same inputs.
+\item[Dominator] Block $d$ dominates $n$ if every path from the entry to $n$ passes through $d$.
+\item[Edit distance (Levenshtein)] The minimum number of single-character edits turning one word into another.
+\item[Fixed point] A state where re-applying an operation changes nothing; data-flow analyses iterate to one.
+\item[Fuzzing] Testing with automatically generated, often random, inputs.
+\item[Hash join] A join that builds a hash table on one input and probes it with the other.
+\item[Inlining] Replacing a function call by the body of the function.
+\item[Intermediate representation (IR)] The compiler's internal program form between source and machine code.
+\item[Language Server Protocol (LSP)] A standard by which editors obtain diagnostics, hover, completion and more from a language tool.
+\item[Lexer / token] The phase (and its output units) that groups characters into words such as identifiers and numbers.
+\item[Linear-scan allocation] Register allocation by sweeping live intervals in order of start point.
+\item[Liveness] A variable is live at a point if its value may still be read later.
+\item[Logical plan] A tree of relational operators describing how to compute a SQL query.
+\item[NULL / three-valued logic] SQL's marker for missing data and the logic (true, false, unknown) that results.
+\item[Optimization pass] One program-rewriting step that preserves behaviour.
+\item[Panic-mode recovery] After a syntax error, discard input until a safe synchronising token so parsing can continue.
+\item[Parse trace] The sequence of shift/reduce steps a parser performed.
+\item[Predicate pushdown] Applying a filter as early (as low in the plan) as possible.
+\item[Pruned SSA] SSA with $\varphi$ functions only where the variable is live.
+\item[Reaching definitions] Which assignments may supply the value of a variable at a point.
+\item[Reference interpreter] A simple, independent implementation used as the correctness oracle.
+\item[Register spill] Keeping a value in memory because no register is available.
+\item[Rule-based optimizer] An optimizer that applies fixed rewrite rules instead of estimating costs.
+\item[Sandbox] A restricted environment for running untrusted programs.
+\item[Scope / symbol table] The region where a name is visible and the table mapping names to declarations.
+\item[SSA] Static single assignment: every variable is assigned exactly once.
+\item[Stack machine] A machine whose instructions operate on an operand stack.
+\item[Strength reduction] Replacing an expensive operation by a cheaper one ($x\cdot 2 \to x+x$).
+\item[Three-address code] IR in which each instruction has at most one operator and three operands.
+\item[Trap] A defined run-time failure (e.g.\ division by zero) that stops the program deterministically.
+\item[Type checking] Verifying that operations are applied to compatible types.
+\item[VM (virtual machine)] A program that executes bytecode.
+\end{description}

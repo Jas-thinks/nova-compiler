@@ -98,3 +98,9 @@ def test_asm_endpoint_reports_register_allocation_effect():
     assert c["with_regalloc"]["calleeSavedRegisterUses"] > 0 and c["without_regalloc"]["calleeSavedRegisterUses"] == 0
     bad = client.post("/api/asm", json={"source": "fn main() { let x: int = 1.5; }"}).json()
     assert bad["success"] is False and bad["diagnostics"]
+
+
+def test_bool_condition_fix_does_not_double_parenthesize():
+    src = "fn main() {\n    let a: int = 5;\n    if (a) {\n        print(a);\n    }\n}\n"
+    r = quickfix.autofix(src)
+    assert r["status"] == "fixed" and "if (a != 0)" in r["fixedSource"] and "((" not in r["fixedSource"]

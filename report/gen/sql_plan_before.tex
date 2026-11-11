@@ -1,0 +1,11 @@
+\begin{lstlisting}[]
+Limit 5 offset 0 keep 3 cols
+  Sort slot1 DESC
+    Project u.name, SUM(o.amount), COUNT(*)
+      Filter (SUM(o.amount) > 5)
+        Aggregate group by u.name compute [SUM(o.amount), COUNT(*)]
+          Filter (u.age > 20)
+            NestedLoopJoin INNER on (u.id = o.uid)
+              Scan users AS u
+              Scan orders AS o
+\end{lstlisting}

@@ -1,0 +1,38 @@
+\begin{longtable}{@{}lp{0.78\textwidth}@{}}\toprule
+\textbf{Opcode} & \textbf{Effect}\\ \midrule\endhead
+\texttt{PUSH} & Push a constant onto the operand stack.\\
+\texttt{POP} & Discard the top of the operand stack.\\
+\texttt{LOAD} & Push the value of a local slot onto the operand stack.\\
+\texttt{STORE} & Pop the top of the stack into a local slot.\\
+\texttt{ADD} & Pop b, pop a, push a + b.\\
+\texttt{SUB} & Pop b, pop a, push a - b.\\
+\texttt{MUL} & Pop b, pop a, push a * b.\\
+\texttt{DIV} & Pop b, pop a, push a / b (integer division traps on zero).\\
+\texttt{MOD} & Pop b, pop a, push a \% b (traps on zero).\\
+\texttt{NEG} & Pop a, push -a.\\
+\texttt{NOT} & Pop a, push logical not a.\\
+\texttt{LT} & Pop b, pop a, push a \textless{} b.\\
+\texttt{LE} & Pop b, pop a, push a \textless{}= b.\\
+\texttt{GT} & Pop b, pop a, push a \textgreater{} b.\\
+\texttt{GE} & Pop b, pop a, push a \textgreater{}= b.\\
+\texttt{EQ} & Pop b, pop a, push a == b.\\
+\texttt{NE} & Pop b, pop a, push a != b.\\
+\texttt{I2F} & Pop an int, push it converted to float.\\
+\texttt{F2I} & Pop a float, push it truncated to int.\\
+\texttt{JMP} & Jump unconditionally to an address.\\
+\texttt{JZ} & Pop a bool; jump if it is false.\\
+\texttt{JNZ} & Pop a bool; jump if it is true.\\
+\texttt{CALL} & Pop N arguments into a new call frame and jump to the function.\\
+\texttt{RET} & Pop the return value, destroy the frame, push the value in the caller.\\
+\texttt{RETV} & Destroy the frame and return to the caller (no value).\\
+\texttt{PRINT} & Pop a value and append it to the program output.\\
+\texttt{PUSHS} & Push a reference to string literal \#a from the constant pool.\\
+\texttt{NEWARR} & Pop a size n, allocate a zero-initialised heap array of n elements, push its reference (traps if n \textless{} 0).\\
+\texttt{ALOAD} & Pop index, pop array, push array[index] (traps when out of bounds).\\
+\texttt{ASTORE} & Pop value, pop index, pop array; array[index] = value (traps when out of bounds).\\
+\texttt{ALEN} & Pop a string or array reference, push its length.\\
+\texttt{SCAT} & Pop b, pop a (strings), push a new string a + b.\\
+\texttt{SEQ} & Pop b, pop a (strings), push whether their contents are equal.\\
+\texttt{HALT} & Stop the virtual machine.\\
+\bottomrule
+\end{longtable}

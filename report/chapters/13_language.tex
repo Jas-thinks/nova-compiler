@@ -1,0 +1,100 @@
+\chapter{The NOVA language}
+\label{ch:language}
+
+\section{Design goals}
+NOVA is deliberately small so that every rule can be stated precisely and verified, yet expressive enough to write real algorithms (sorting, primes, Fibonacci, string building). It is statically typed, has no implicit conversions, and every runtime failure is a defined, deterministic trap.
+
+\begin{lstlisting}[language=nova,caption={A first NOVA program.},label={lst:first}]
+fn fact(n: int) -> int {
+    if (n <= 1) { return 1; }
+    return n * fact(n - 1);
+}
+fn main() {
+    print(fact(5));          // 120
+}
+\end{lstlisting}
+
+\section{Types}
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}llp{0.55\textwidth}@{}}\toprule
+\textbf{Type} & \textbf{Values} & \textbf{Notes}\\ \midrule
+\code{int} & 64-bit signed & arithmetic wraps (two's complement); literals up to 9223372036854775807 (larger ones are a lexical error)\\
+\code{float} & IEEE-754 double & printed with up to 15 significant digits; \code{nan}, \code{inf} supported\\
+\code{bool} & \code{true}, \code{false} & only \code{==} and \code{!=} compare booleans\\
+\code{string} & immutable byte string & literals with escapes \verb|\n \t \\ \"|; \code{+}, \code{==}, \code{!=}, \code{len}, \code{print}\\
+\code{int[]}, \code{float[]}, \code{bool[]} & heap arrays & reference semantics, zero-initialised, bounds-checked\\ \bottomrule
+\end{tabular}
+\caption{NOVA types. There are no implicit conversions between them.}
+\end{table}
+
+\section{Declarations, statements and expressions}
+\begin{itemize}
+  \item \textbf{Functions}: \code{fn name(p: T, \ldots) -> T \{ \ldots \}}; the return type is omitted for procedures. Order of declaration does not matter. Execution starts at \code{main}, which takes no parameters and returns nothing.
+  \item \textbf{Variables}: \code{let x: T = expr;} --- always initialised; assignment \code{x = expr;}; element assignment \code{a[i] = expr;}.
+  \item \textbf{Control flow}: \code{if (c) \{\ldots\} else \{\ldots\}} and \code{while (c) \{\ldots\}}; bodies must be blocks (no ``dangling else'').
+  \item \textbf{Other}: \code{return expr;}, \code{print(expr);}, call statements, nested blocks.
+  \item \textbf{Built-in functions}: \code{to\_float(int)}, \code{to\_int(float)} (saturating, NaN becomes 0), \code{len(string or array)}.
+\end{itemize}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}clp{0.55\textwidth}@{}}\toprule
+\textbf{Precedence} & \textbf{Operators} & \textbf{Associativity / notes}\\ \midrule
+1 (lowest) & \verb+||+ & left; short-circuit\\
+2 & \verb+&&+ & left; short-circuit\\
+3 & \verb+==  !=+ & left; both operands the same type\\
+4 & \verb+<  <=  >  >=+ & left; numbers only\\
+5 & \verb|+  -| & left; \code{+} also concatenates strings\\
+6 & \verb|*  /  %| & left; \code{\%} on integers only\\
+7 & \verb|-  !| (prefix) & right\\
+8 (highest) & \verb|a[i]|, calls, parentheses & postfix\\ \bottomrule
+\end{tabular}
+\caption{Operator precedence. It is encoded in the grammar by stratifying expressions into levels, so no precedence declarations are needed.}
+\end{table}
+
+\section{Scoping rules}
+A \code{\{ \}} block opens a scope. A name may be shadowed in an inner scope but not redeclared in the same scope; a variable must be declared before use and its initializer is checked \emph{before} the name enters scope (so \code{let x: int = x;} is an error). Parameters live in the function scope. Internally every declaration receives a unique name (\code{x}, \code{x.1}, \code{x.2}\ldots) so later phases never have to reason about shadowing.
+
+\section{Exact runtime semantics}
+All engines --- reference interpreter, VM, optimizer's constant folder and native code --- implement these rules identically, which is what differential testing verifies.
+
+\begin{itemize}
+  \item Integer \code{+ - *} wrap modulo $2^{64}$. Division truncates toward zero; \code{INT\_MIN / -1} wraps to \code{INT\_MIN}; \code{x \% -1} is 0.
+  \item Integer \code{/} or \code{\%} by zero is a runtime \emph{trap}; there is no undefined behaviour.
+  \item Float arithmetic is IEEE-754; comparisons with NaN are false except \code{!=}.
+  \item \code{to\_int} saturates at the 64-bit limits and maps NaN to 0.
+  \item Array indices are checked: out-of-range access traps with \emph{index out of bounds}; \code{new T[n]} with $n<0$ traps with \emph{negative array size}.
+  \item Unbounded recursion traps with \emph{stack overflow} (VM: depth 512; native: a signal handler on an alternate stack).
+  \item Heap allocation is capped (4{,}194{,}304 cells); exceeding it is a deterministic error rather than exhausting memory. There is no garbage collector.
+\end{itemize}
+
+\begin{plain}
+``Defined behaviour'' means every program has exactly one correct output --- there is no ``it depends on the compiler''. C is famous for the opposite (signed overflow and out-of-bounds access are undefined). Defining everything is what makes it possible to compare independent implementations automatically.
+\end{plain}
+
+\section{Arrays and strings}
+Arrays and strings live on a heap. An array value is a \emph{reference}: passing it to a function lets the callee modify the caller's array.
+
+\begin{lstlisting}[language=nova,caption={Arrays are passed by reference (from the shipped example \texttt{09\_arrays}).},label={lst:arrays}]
+fn swap(a: int[], i: int, j: int) {
+    let t: int = a[i];  a[i] = a[j];  a[j] = t;
+}
+fn main() {
+    let a: int[] = [5, 2, 9];     // literal
+    let b: float[] = new float[3];   // zero-initialised
+    swap(a, 0, 2);
+    print(a[0]);                  // 9
+    print(len(a));                // 3
+}
+\end{lstlisting}
+
+\section{Formal grammar}
+The complete grammar, exactly as loaded by the parser generator, is given in Listing~\ref{lst:grammar}. \code{eps} denotes the empty string; the production \code{Stmt -> error ;} is used only for error recovery (Section~\ref{sec:recovery}).
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.96\textwidth}
+\begingroup\lstset{style=tiny,caption={The complete NOVA grammar (\LRProductions{} productions).},label={lst:grammar}}
+\input{gen/grammar}
+\endgroup
+\end{minipage}
+\end{figure}

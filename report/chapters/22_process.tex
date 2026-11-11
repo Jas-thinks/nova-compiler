@@ -1,0 +1,44 @@
+\chapter{Engineering process}
+\label{ch:process}
+
+\section{How the project was built}
+The project was developed in layers, each one verified before the next was added:
+
+\begin{enumerate}
+  \item \textbf{Core compiler}: lexer, LR(1) parser, semantic analysis, IR, optimizer, bytecode VM, reference interpreter, random program generator --- with the differential test harness written \emph{alongside} the features, so every new optimization was checked against the interpreter from its first commit.
+  \item \textbf{Analyses and studio}: CFG, data-flow, SSA, the REST service and the React studio.
+  \item \textbf{Native back end}: x86-64 code generation and the C runtime, verified by the native-versus-VM differential test, then the register allocator.
+  \item \textbf{Language growth}: arrays and strings through all phases (grammar, types, IR, VM, interpreter, native runtime), with the random generator extended in the same step so the new features were fuzzed immediately.
+  \item \textbf{Tooling}: the language server and CI configuration.
+  \item \textbf{NOVA-SQL}: a second compiler, verified against SQLite.
+  \item \textbf{Assistant and polish}: inlining, verified quick fixes, runtime analysis, the new studio pages, browser-driven UI verification, documentation and this report.
+\end{enumerate}
+
+\begin{keybox}
+The discipline that mattered most: \textbf{never add a feature without extending the generator and the oracle comparison in the same change.} Features that cannot be fuzzed (for example the assistant's rules) were verified differently --- by re-running the real compiler on every proposed change.
+\end{keybox}
+
+\section{Version control}
+The project is kept in Git. The history below is the complete commit list of the repository as it stands. (The repository was created when the project was placed under version control; the first commit therefore already contains the initial compiler and studio, and the later commits show the layers listed above.)
+
+\begingroup\small
+\input{gen/gitlog}
+\endgroup
+\captionof{table}{Commit history.}
+
+Commit messages describe \emph{what and why}; large changes were committed only after the full test suite passed. A repository audit before publishing found, and removed from the unpublished history, 200~MB of accidentally committed sanitizer build output, and a \code{.gitignore} entry now prevents it.
+
+\section{Automation}
+\begin{itemize}
+  \item \textbf{One command, all checks.} \code{scripts/test.sh} builds the compiler, runs the C++ tests, the 1000-program fuzz, native-versus-VM, SQL-versus-SQLite, the backend tests and the frontend type-check and tests, and fails if any step fails.
+  \item \textbf{Sanitizers} in a second script (\code{scripts/sanitize.sh}).
+  \item \textbf{Continuous integration.} A GitHub Actions workflow (\code{.github/workflows/ci.yml}) runs the full suite and the sanitizer job on every push. It is configured and committed, but, as the project has not been pushed to a hosted repository, it has \emph{not yet run} on GitHub.
+\end{itemize}
+
+\section{Documentation}
+In addition to this report, the \code{docs} directory contains specifications for the language, grammar, parsing algorithm, bytecode, IR and optimization, advanced analyses, SQL and the assistant, an architecture overview, an API reference, a testing guide and a demo script.
+
+\section{Tools and AI assistance}
+\begin{plain}[Disclosure]
+An AI coding assistant (Claude Code) was used during development and testing, working from the author's requirements and instructions; the author directed the scope, reviewed the results, and is responsible for the project. Independently of how the code was written, its correctness claims rest on the automated tests and the differential testing described in Chapter~\ref{ch:verify}, which anyone can re-run. The optional LLM features of the assistant (Chapter~\ref{ch:assistant}) are separate: they are disabled unless an API key is configured, and the compiler verifies everything they propose.
+\end{plain}

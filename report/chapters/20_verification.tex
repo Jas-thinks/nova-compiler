@@ -1,0 +1,130 @@
+\chapter{Verification and testing}
+\label{ch:verify}
+
+\begin{keybox}[Thesis of this chapter]
+A compiler cannot be trusted because its author believes it works. It can be trusted to the extent that \emph{independent implementations agree} on a large, varied, automatically generated set of inputs. Everything in this chapter serves that principle.
+\end{keybox}
+
+\section{Strategy: layers of evidence}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[font=\sffamily\small]
+  \fill[nova!15] (0,0) -- (10,0) -- (8.6,1.3) -- (1.4,1.3) -- cycle;
+  \fill[nova!28] (1.4,1.3) -- (8.6,1.3) -- (7.4,2.6) -- (2.6,2.6) -- cycle;
+  \fill[nova!45] (2.6,2.6) -- (7.4,2.6) -- (6.2,3.9) -- (3.8,3.9) -- cycle;
+  \fill[nova!70] (3.8,3.9) -- (6.2,3.9) -- (5,5.1) -- cycle;
+  \node at (5,0.65) {\textbf{\TotalTests{} unit and API tests} (C++, Python, TypeScript)};
+  \node at (5,1.95) {\textbf{Differential tests} (3 engines, native vs VM, SQL vs SQLite)};
+  \node at (5,3.25) {\textbf{Fuzzing} (random + mutated inputs)};
+  \node[white] at (5,4.35) {\small\textbf{Sanitizers}};
+\end{tikzpicture}
+\caption{Layers of verification, from cheap and broad (bottom) to specialised (top).}
+\end{figure}
+
+\section{Test inventory}
+\begin{table}[H]\centering\small\input{gen/tests_cpp}\caption{C++ unit tests by suite (counted from the real test run; \CppTestsFailed{} failures).}\end{table}
+\begin{table}[H]\centering\small\input{gen/tests_backend}\caption{Backend (pytest) tests.}\end{table}
+\begin{table}[H]\centering\small\input{gen/tests_frontend}\caption{Frontend (Vitest) tests.}\end{table}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}
+\begin{axis}[xbar,width=0.8\textwidth,height=4.6cm,bar width=14pt,xmin=0,xmax=215,symbolic y coords={Frontend TS,Backend Py,Compiler core C++},ytick=data,nodes near coords,nodes near coords align={horizontal},axis x line*=bottom,axis y line*=left,xlabel={number of tests},enlarge y limits=0.3,font=\sffamily\small,every node near coord/.append style={font=\sffamily\small}]
+\addplot[fill=nova!75,draw=none] coordinates {(\FrontendTests,Frontend TS) (\BackendTests,Backend Py) (\CppTests,Compiler core C++)};
+\end{axis}
+\end{tikzpicture}
+\caption{Automated tests per language.}
+\end{figure}
+
+\section{Differential testing}
+\subsection{The independent implementations}
+\begin{itemize}
+  \item \textbf{Reference interpreter} (\code{compiler/src/vm/interp.cpp}). A tree-walking interpreter over the annotated AST. It shares \emph{no code} with the IR, the optimizer or the VM and is deliberately written differently: integer arithmetic goes through 128-bit integers and is truncated to 64 bits, number formatting uses C++ iostreams, strings and arrays live in its own heap.
+  \item \textbf{Baseline VM}: IR $\to$ bytecode, no optimization.
+  \item \textbf{Optimized VM}: the same after the optimizer, for \emph{every subset} of the optimization passes in the regression suite.
+  \item \textbf{Native x86-64}: assembly produced from the optimized IR, assembled and run as a separate process.
+\end{itemize}
+They must agree on standard output \emph{and} on whether and how the program failed (the runtime error message), so ``traps in the same place with the same message'' is part of correctness.
+
+\subsection{Random program generator}
+The generator (\code{compiler/src/testing/fuzz.cpp}) produces \emph{well-typed, terminating} programs from a seed: it tracks scopes so variables are declared before use; builds expressions by type with bounded depth; makes loops terminate with a counter; uses non-zero literal divisors most of the time (but sometimes a variable, so genuine traps occur); generates up to three helper functions with parameters and return values (so calls and, now, inlining are exercised), loops at function entry, early returns, integer arrays with in-range indices (3\% deliberately out of range to test the trap), and strings with concatenation and comparison. Determinism by seed makes every failure reproducible.
+
+\subsection{Failure minimization}
+If a random program exposes a disagreement, a delta-debugging minimizer repeatedly removes chunks of lines (halving the chunk size) while the program still fails, producing a minimal reproducer that is saved next to the original. A test proves the minimizer works on a synthetic failure.
+
+\subsection{Can the checker fail?}
+A test is only meaningful if it can fail. The test \code{fuzz.checkerDetectsAnInjectedOptimizerBug} deliberately corrupts one optimization (turning a fold into a wrong result) and asserts that the differential checker reports mismatches --- evidence that a ``0 failures'' result means something.
+
+\subsection{Results}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}p{0.36\textwidth}p{0.2\textwidth}X@{}}\toprule
+\textbf{Experiment} & \textbf{Result} & \textbf{Detail}\\ \midrule
+Random programs, 3 engines (reference, VM, optimized VM) & \FuzzPassed{} / \FuzzN{} agree & \FuzzFailed{} mismatches, \FuzzInconclusive{} inconclusive (step limit)\\
+Optimizer effect on that corpus & \FuzzIRCut{}\% fewer IR instructions & \FuzzIRBefore{} $\to$ \FuzzIRAfter{}\\
+ & \FuzzStepCut{}\% fewer VM steps & \FuzzStepsBefore{} $\to$ \FuzzStepsAfter{}\\
+Native code vs VM (all examples + random programs) & \NativeDiffPass{} agree & \NativeDiffFail{} mismatches; \NativeDiffSkipped{} skipped (the intentionally non-compiling examples)\\
+NOVA-SQL vs SQLite 3.45 & \SQLFuzzPass{} / \SQLFuzzTotal{} agree & \SQLFuzzFail{} mismatches; \SQLFuzzSkipped{} skipped (statements SQLite itself rejected)\\ \bottomrule
+\end{tabularx}
+\caption{Differential-testing results (fresh runs made by the report generator).}
+\end{table}
+
+\section{Mutation fuzzing of invalid programs}
+Valid programs exercise the happy path. To test error handling, valid generated programs are \emph{mutated} (delete or insert a character, delete or duplicate a line, insert a keyword, change a digit, swap characters, delete a span) and fed to the compiler. The properties checked are: the compiler never crashes; every rejected program yields at least one error diagnostic that is \emph{well-formed} (non-empty message, category and code; valid line and column); and an accepted mutant still behaves identically in all engines.
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lr@{\hspace{1.5cm}}lr@{}}\toprule
+Mutated programs & \InvalidN{} & rejected: syntax errors & \InvalidRejSyn{}\\
+Accepted (still valid) & \InvalidAccepted{} & rejected: lexical errors & \InvalidRejLex{}\\
+Crashes & \InvalidCrashes{} & rejected: semantic errors & \InvalidRejSem{}\\
+Malformed diagnostics & \InvalidBadDiag{} & & \\ \bottomrule
+\end{tabular}
+\caption{Invalid-program fuzzing (real run).}
+\end{table}
+
+\section{Testing NOVA-SQL against SQLite}
+SQLite is a mature, independent SQL engine that is always available. The fuzzer \code{scripts/sql\_fuzz.py} generates, per seed:
+\begin{enumerate}
+  \item a schema of 1--3 tables with INT, FLOAT and TEXT columns and a primary key, filled with 0--8 rows including NULLs;
+  \item 0--2 DML statements (\code{UPDATE}, \code{DELETE}, \code{INSERT});
+  \item one well-typed query: projections, 0--2 joins (inner, left, cross, comma), WHERE with arithmetic, comparisons, \code{LIKE}, \code{IN}, \code{BETWEEN}, \code{CASE}, \code{COALESCE}, string functions, \code{GROUP BY}/\code{HAVING} with every aggregate, \code{DISTINCT}, \code{ORDER BY}, \code{LIMIT}/\code{OFFSET}.
+\end{enumerate}
+The script is executed by both engines. Results are compared as multisets when there is no \code{ORDER BY}; queries with \code{LIMIT} always order by \emph{all} output columns so the result is deterministic. Numbers are compared with a relative tolerance of $10^{-9}$. If SQLite itself rejects the generated statement (for example a primary-key clash) the case is \emph{skipped}, not counted as a pass.
+
+A second mode (\code{--mutate}) feeds garbled SQL to the compiler to check it never crashes: \SQLMutN{} garbled scripts produced \SQLMutBad{} crashes or malformed reports.
+
+\begin{bugbox}[Found by the SQLite oracle]
+Early in development 293 of 300 random queries agreed; of the seven disagreements three were generator mistakes (it compared \texttt{MAX(text\_column)} with an integer, which NOVA-SQL correctly rejects and SQLite loosely accepts) and one was a \emph{real compiler bug}: \verb|SELECT SUM(a) FROM t HAVING SUM(x) = 0| (with \texttt{x} a FLOAT column) returned a row when it should not. The binder recorded the static type only on the \emph{top} node of an expression, so a \texttt{SUM(x)} nested inside a comparison lost its FLOAT type and the executor summed it as an integer (zero). The fix made every node record its type. The query shape was then also added as a permanent unit test.
+\end{bugbox}
+
+\section{Sanitizers}
+\code{scripts/sanitize.sh} builds the compiler with AddressSanitizer and UndefinedBehaviorSanitizer (\code{-fsanitize=address,undefined -fno-sanitize-recover}) and runs the unit tests, a 300-program differential fuzz, a 600-program invalid fuzz, a 300-case SQL differential and 600 garbled SQL scripts. The latest run reported \textbf{no findings}: no memory errors, leaks or undefined behaviour.
+
+\section{Bugs found by the verification itself}
+The project's tests are not only a final check; they were used continuously and found real defects, which is the best argument for their value.
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}p{0.04\textwidth}p{0.20\textwidth}X@{}}\toprule
+& \textbf{Found by} & \textbf{Defect and fix}\\ \midrule
+1 & native-vs-VM differential (37 of 310 failed) & \emph{Stack misalignment.} A call with an odd number of pushed arguments left \code{\%rsp} 8 bytes off 16-byte alignment; a later libc call in the callee crashed on an aligned-load instruction. Fixed by padding before the pushes.\\
+2 & inlining unit tests + fuzz + assembler error & \emph{Name collisions between inlining rounds} (Section~\ref{sec:inlining}); fixed with a globally unique site counter.\\
+3 & SQLite differential fuzz & \emph{Lost static types of nested SQL expressions} (above).\\
+4 & building the runtime analyser & \emph{Unbounded trace memory} on deep recursion (\texttt{bad\_alloc}); fixed with a frame budget and an always-kept terminal snapshot.\\
+5 & quick-fix output review & \emph{Redundant parentheses} in a generated fix (\texttt{if ((a != 0))}); fixed and covered by a test.\\
+6 & repository audit before publishing & \emph{200~MB of sanitizer build output had been committed}; removed from the unpublished history and ignored in future.\\ \bottomrule
+\end{tabularx}
+\caption{Real defects found and fixed during development.}
+\end{table}
+
+\section{What testing does \emph{not} prove}
+\begin{warnbox}[Honest scope of the evidence]
+Differential testing shows agreement on the generated inputs; it is not a proof of correctness. The generator covers the language features it knows about (it does not yet generate nested arrays, deep call chains or every operator combination), the reference interpreter and the compiler share the same \emph{front end} (so a parsing or type-checking bug would affect both identically), and SQLite fixes only the behaviours NOVA-SQL chose to copy. Performance numbers are single-machine measurements. These limits are why the report distinguishes carefully between what was verified and what was only built.
+\end{warnbox}
+
+\section{How to reproduce}
+\begin{lstlisting}[language=bash,style=tiny,caption={Verification commands.},label={lst:verifycmds}]
+./scripts/test.sh                                   # every suite (C++, fuzz, native-vs-VM, SQL-vs-SQLite, pytest, vitest)
+./scripts/sanitize.sh                               # sanitizer build + fuzzers
+./compiler/build/novac fuzz --count=2000 --seed=1   # 3-engine differential fuzz
+./compiler/build/novac fuzz --mode=invalid --count=1000 --seed=7
+./scripts/native_diff.sh 200                        # native == VM on examples + 200 random programs
+python3 scripts/sql_fuzz.py --count 3000 --seed 555 # NOVA-SQL vs SQLite
+python3 scripts/sql_fuzz.py --mutate --count 1000   # garbled SQL must never crash
+\end{lstlisting}

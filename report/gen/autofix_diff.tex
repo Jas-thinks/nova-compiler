@@ -1,0 +1,17 @@
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+--- original.nova
++++ fixed.nova
+@@ -4,9 +4,9 @@
+ fn main() {
+     let a: int = 5;
+     let b: float = 2.5;
+-    let c: float = a + b;
+-    let d: int = 3.5;
+-    if (a) {
++    let c: float = to_float(a) + b;
++    let d: int = to_int(3.5);
++    if (a != 0) {
+         print(c);
+     }
+ }
+\end{lstlisting}
