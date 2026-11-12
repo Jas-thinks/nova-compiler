@@ -227,6 +227,7 @@ export interface FunctionAnalysis {
   liveness: DataflowInfo; reachingDefinitions: DataflowInfo
   ssa: { blocks: SsaBlockInfo[]; phiCount: number; definitions: number }
   summary: { blocks: number; edges: number; loops: number; phis: number; livenessIterations: number; reachingDefsIterations: number }
+  registerAllocation?: { k: number; colorsUsed: number; spills: number; minimalK: number; nodes: { name: string; color: number; spilled: boolean; first: number; last: number; uses: number }[] }
 }
 export interface AnalysisInfo { original: FunctionAnalysis[]; optimized: FunctionAnalysis[] }
 

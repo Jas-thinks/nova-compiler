@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import {
   BookOpen, Boxes, BugPlay, Cpu, FlaskConical, GraduationCap, Layers, LayoutDashboard, ListTree, Loader2, Network, Play, ScanText,
-  Bot, Database, Sigma, SquareTerminal, Menu, GitBranch, Telescope, TestTube2, TriangleAlert, Zap, X,
+  BarChart3, Bot, Database, Sigma, SquareTerminal, Menu, GitBranch, Telescope, TestTube2, TriangleAlert, Zap, X,
 } from 'lucide-react'
 import { NovaProvider, useNova } from './state/NovaContext'
 import { useHashRoute } from './hooks/useHashRoute'
@@ -26,6 +26,7 @@ const Explorer = lazy(() => import('./pages/Explorer'))
 const SqlLab = lazy(() => import('./pages/SqlLab'))
 const Assistant = lazy(() => import('./pages/Assistant'))
 const Native = lazy(() => import('./pages/Native'))
+const Visualisation = lazy(() => import('./pages/Visualisation'))
 
 interface NavItem { id: string; label: string; icon: ReactNode; page: ReactNode; group: string; standalone?: boolean }   // standalone: page does not use the NOVA compile/run header
 const I = 16
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
   { id: 'playground', label: 'Compiler Playground', icon: <SquareTerminal size={I} />, page: <Playground />, group: 'Workspace' },
   { id: 'learn', label: 'Learn Mode', icon: <GraduationCap size={I} />, page: <Learn />, group: 'Workspace' },
   { id: 'explorer', label: 'Compiler Explorer', icon: <Telescope size={I} />, page: <Explorer />, group: 'Workspace' },
+  { id: 'visualisation', label: 'Visualisation', icon: <BarChart3 size={I} />, page: <Visualisation />, group: 'Workspace' },
   { id: 'assistant', label: 'AI Assistant', icon: <Bot size={I} />, page: <Assistant />, group: 'Workspace', standalone: true },
   { id: 'sql', label: 'SQL Compiler', icon: <Database size={I} />, page: <SqlLab />, group: 'Workspace', standalone: true },
   { id: 'lexical', label: 'Lexical Analysis', icon: <ScanText size={I} />, page: <Lexical />, group: 'Front end' },

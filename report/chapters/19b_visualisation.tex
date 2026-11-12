@@ -11,7 +11,7 @@ Reading about ``shift/reduce parsing'' is abstract; watching a stack of states f
 
 \section{Design principles}
 \begin{enumerate}
-  \item \textbf{Real data only.} Every view is rendered from the compiler's JSON. There is no mock data and no hand-drawn diagram of a ``typical'' run: if the compiler changes, the picture changes. (The data-driven figures in Section~\ref{sec:visfig} of this chapter are generated the same way, by a script that runs the compiler.)
+  \item \textbf{Real data only.} Every view is rendered from the compiler's JSON. There is no mock data and no hand-drawn diagram of a ``typical'' run: if the compiler changes, the picture changes. (The data-driven figures in Section~\ref{sec:visfig} of this chapter and the page in the studio are generated the same way, by a script that runs the compiler.)
   \item \textbf{Time is a slider.} Anything that unfolds over time --- parsing, data-flow iteration, the VM, the debugger --- is recorded once and \emph{replayed}: first/previous/play/next/last controls and a scrubber. Replay makes backward stepping free and makes every state reproducible.
   \item \textbf{Linked views.} Selecting something in one view highlights it in another: a CFG block highlights its source lines; a token highlights its position in the source; a plan operator shows its measured row count.
   \item \textbf{Explain every step.} Wherever a step is shown, a sentence says \emph{why} it happened (``Lookahead \texttt{fn} is valid in state 0: push it and go to state 4'').
@@ -65,8 +65,13 @@ Figure~\ref{fig:gallery} shows four of the views side by side; each is a full-si
 \caption{Four of the studio's views.}\label{fig:gallery}
 \end{figure}
 
+\section{The Visualisation page}
+The studio has a dedicated \textbf{Visualisation} page (left menu, \emph{Workspace} group) that brings the data-driven charts together for \emph{whatever program is currently in the Playground}: parser stack depth, a VM instruction histogram (press \emph{Run to collect VM stats}), optimizer rewrites per round and pass, live ranges coloured by register (one tab per function), and the measured row counts of an optimized SQL plan, with links to the detailed views.
+
+\shot{ui_visualisation}{The studio's Visualisation page for the Fibonacci example (live data, no mock values).}
+
 \section{Figures computed from real compiler data}\label{sec:visfig}
-The five figures below are not screenshots: a script (\code{report/tools/gen\_vis.py}) runs the compiler on shipped examples and emits the plot data. They show the kind of insight the data makes visible.
+The five figures below reproduce, for the report, the same kind of charts: a script (\code{report/tools/gen\_vis.py}) runs the compiler on shipped examples and emits the plot data. They show the kind of insight the data makes visible.
 
 \subsection{How the LR(1) parser stack grows}
 Figure~\ref{fig:parsedepth} plots the parser stack depth at every step of parsing the shipped example \texttt{03\_fibonacci} (\VisParseSteps{} steps). The stack deepens as the parser enters nested constructs (a function, a block, an expression) and unwinds as it reduces them; its maximum of \VisParseMaxDepth{} is the deepest nesting, here a call inside an expression inside a \code{while} body.

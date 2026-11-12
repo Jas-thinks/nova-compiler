@@ -22,7 +22,7 @@ GROUP BY u.name HAVING SUM(o.amount) > 5 ORDER BY total DESC LIMIT 5;   -- ... b
 | **NOVA back end** | Stack **bytecode VM** with time-travel debugger; **native x86-64** (System V) with a **linear-scan register allocator**, heap arrays & strings, runtime traps | Native output ≡ VM output on every example + random programs (`scripts/native_diff.sh`); ASan/UBSan clean |
 | **NOVA-SQL** | Lexer, recursive-descent parser, binder/type checker (**3-valued NULL logic**), logical plan, optimizer (**constant folding, predicate pushdown through joins, hash join, top-N**), expression bytecode VM, executor, `CASE`, joins/aggregates/`HAVING`/`DISTINCT`/`ORDER BY`/`LIMIT` | **Differential fuzzer vs SQLite** (thousands of random schemas+queries agree; it found a real bug), garbled-input fuzzing under sanitizers |
 | **Assistant** | Compiler-**verified quick fixes**, iterative auto-fix, rule-based **runtime root-cause analysis** (no API key), optional Claude fixes re-checked by the compiler, LSP quick-fix code actions | A fix is "verified" only if applying it and re-compiling removes the error without adding new ones |
-| **Tooling** | FastAPI service with sandboxed subprocess execution, **language server (LSP)**, React/TypeScript studio (19 pages, Monaco, React Flow), CI workflow | 289 automated tests + fuzzers (below) |
+| **Tooling** | FastAPI service with sandboxed subprocess execution, **language server (LSP)**, React/TypeScript studio (20 pages, Monaco, React Flow), CI workflow | 289 automated tests + fuzzers (below) |
 
 ## Quick start
 Requirements: g++ (C++17), CMake ≥ 3.16, Python ≥ 3.11 (with `venv`), Node ≥ 18, gcc (for the native backend).
@@ -72,7 +72,7 @@ CLI: `novac compile --run < prog.nova | jq .execution` · `scripts/nova-native.s
 ```
 compiler/   C++17: lexer, parser (LR(1) generator), ast, semantic, ir, optimizer, analysis, codegen (VM + x86-64), vm, sql/, tests
 backend/    FastAPI app (compile, optimize, debug sessions, asm, sql, suggest/autofix, AI, LSP) + pytest suite
-frontend/   React + TypeScript + Vite + Tailwind + Monaco + React Flow (19 pages) + Vitest
+frontend/   React + TypeScript + Vite + Tailwind + Monaco + React Flow (20 pages) + Vitest
 examples/   NOVA programs (valid, error, runtime-error) and SQL scripts
 benchmarks/ fib, primes, inlining workloads (+ CPython equivalents)
 editors/    VS Code client for the language server

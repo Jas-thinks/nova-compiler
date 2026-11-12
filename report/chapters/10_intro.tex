@@ -10,7 +10,7 @@ This project, called \nova{}, is a complete compiler-engineering platform. It is
   \item \textbf{\nova{} the language and its compiler} --- a small, statically typed language (integers, floats, booleans, strings, arrays, functions) compiled either to a bytecode virtual machine or to real x86-64 machine code.
   \item \textbf{\novasql{}} --- a compiler for the SQL query language, together with an in-memory database engine that executes the compiled queries.
   \item \textbf{An assistant and a language server} --- tools that turn compiler diagnostics into verified fixes and bring the compiler into code editors.
-  \item \textbf{A web studio} --- a React application whose 19 pages show every phase of both compilers using the \emph{real} compiler output, never mock data.
+  \item \textbf{A web studio} --- a React application whose 20 pages show every phase of both compilers using the \emph{real} compiler output, never mock data.
 \end{enumerate}
 
 \begin{plain}
@@ -69,7 +69,7 @@ nova/
   compiler/     C++17: lexer, parser (LR(1) generator), ast, semantic, ir, optimizer, analysis,
                 codegen (VM bytecode + x86-64), vm, sql/, tests/, runtime/ (C runtime for native code)
   backend/      FastAPI service (app/) and its pytest suite (tests/)
-  frontend/     React + TypeScript + Vite + Tailwind + Monaco + React Flow (19 pages) + Vitest
+  frontend/     React + TypeScript + Vite + Tailwind + Monaco + React Flow (20 pages) + Vitest
   examples/     NOVA programs (valid, error, runtime-error) and SQL scripts
   benchmarks/   fib, primes and inlining workloads, with CPython equivalents
   editors/      VS Code client for the language server
