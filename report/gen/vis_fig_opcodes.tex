@@ -1,0 +1,5 @@
+\begin{tikzpicture}
+\begin{axis}[xbar,width=0.85\textwidth,height=6.2cm,bar width=9pt,xmin=0,xmax=4000,symbolic y coords={ADD,SUB,RET,CALL,LT,JZ,PUSH,STORE,LOAD},ytick=data,nodes near coords,axis x line*=bottom,axis y line*=left,xlabel={times executed},font=\sffamily\small,enlarge y limits=0.08]
+\addplot[fill=nova!75,draw=none] coordinates {(332,ADD) (464,SUB) (465,RET) (466,CALL) (531,LT) (531,JZ) (1027,PUSH) (1978,STORE) (3285,LOAD)};
+\end{axis}
+\end{tikzpicture}

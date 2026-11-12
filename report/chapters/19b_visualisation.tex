@@ -1,0 +1,130 @@
+\input{gen/vis_parse_meta}\input{gen/vis_opcodes}\input{gen/vis_rounds_meta}\input{gen/vis_intervals_meta}\input{gen/vis_sqlrows_meta}
+\chapter{Visualisation}
+\label{ch:vis}
+
+\section{Why visualise a compiler?}
+A compiler is invisible by nature: text goes in, text (or a number on the screen) comes out, and everything interesting happens in between. The studio exists to make the in-between visible. Students, reviewers and the author himself can \emph{see} the token stream, watch a parser stack grow and shrink, follow a loop through a control-flow graph, replay an optimizer's decisions, and compare a query plan before and after rewriting.
+
+\begin{plain}
+Reading about ``shift/reduce parsing'' is abstract; watching a stack of states fill up, one step at a time, with the reason for every action written next to it, makes it concrete. Every visualisation in this project follows that idea: \emph{show the real intermediate data, in a form a person can step through.}
+\end{plain}
+
+\section{Design principles}
+\begin{enumerate}
+  \item \textbf{Real data only.} Every view is rendered from the compiler's JSON. There is no mock data and no hand-drawn diagram of a ``typical'' run: if the compiler changes, the picture changes. (The data-driven figures in Section~\ref{sec:visfig} of this chapter are generated the same way, by a script that runs the compiler.)
+  \item \textbf{Time is a slider.} Anything that unfolds over time --- parsing, data-flow iteration, the VM, the debugger --- is recorded once and \emph{replayed}: first/previous/play/next/last controls and a scrubber. Replay makes backward stepping free and makes every state reproducible.
+  \item \textbf{Linked views.} Selecting something in one view highlights it in another: a CFG block highlights its source lines; a token highlights its position in the source; a plan operator shows its measured row count.
+  \item \textbf{Explain every step.} Wherever a step is shown, a sentence says \emph{why} it happened (``Lookahead \texttt{fn} is valid in state 0: push it and go to state 4'').
+  \item \textbf{Consistent colour semantics.} The same colour always means the same thing (Table~\ref{tab:colours}).
+  \item \textbf{Progressive disclosure.} Summary first (counts, chips), detail on demand (tabs, expandable plans, ``plan as written'').
+\end{enumerate}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{@{}lll@{}}\toprule
+\textbf{Colour} & \textbf{Meaning} & \textbf{Where}\\ \midrule
+\textcolor{teal}{\rule{8pt}{8pt}} green & success, ``true'' branch, verified fix, scan & status chips, CFG edges, assistant, SQL \code{Scan}\\
+\textcolor{crimson}{\rule{8pt}{8pt}} red & error, ``false'' branch, unreachable block, stack-memory operand & diagnostics, CFG, native page\\
+\textcolor{nova}{\rule{8pt}{8pt}} blue / violet & the focus: selection, registers, current step, join & selection, instruction pointer, SQL \code{Join}\\
+\textcolor{amber}{\rule{8pt}{8pt}} amber & caution, jump, filter, back edge & warnings, CFG jump edges, SQL \code{Filter}\\ \bottomrule
+\end{tabular}
+\caption{Colour semantics used across the studio.}\label{tab:colours}
+\end{table}
+
+\section{Catalogue of visualisations}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\textwidth}{@{}p{0.22\textwidth}p{0.27\textwidth}p{0.20\textwidth}X@{}}\toprule
+\textbf{View} & \textbf{What it shows} & \textbf{Data source} & \textbf{Technique}\\ \midrule
+Token table & every token with category, lexeme, terminal, line:column & \code{tokens} & table; selection highlights source range\\
+Parse trace & LR(1) stack, remaining input, action and its explanation per step & \code{parser.trace} & replayable stepper, scrubber, play/pause\\
+FIRST/FOLLOW, LR(1) states & grammar sets; kernel and closure items per state & \code{/api/grammar} & lazy-loaded tables\\
+Parse tree, AST & concrete and abstract syntax trees & \code{parser.tree}, \code{ast} & React Flow graph with a custom tidy-tree layout\\
+Symbol tables & scopes, symbols, types, read/write sites & \code{semantic} & nested scope tree\\
+IR & instructions before/after optimization with explanations & \code{ir} & aligned listings\\
+CFG & blocks, labelled edges, back edges, dominators, unreachable blocks & \code{analysis.blocks/edges} & React Flow with a layered layout; edge colours by kind\\
+Data-flow & USE/DEF/IN/OUT per block per iteration & \code{liveness}, \code{reachingDefinitions} & stepper over \code{history}; changed sets highlighted\\
+SSA & $\varphi$ placement and renamed code per block & \code{ssa} & per-block listing\\
+Optimization history & each rewrite: pass, before $\to$ after, reason & \code{optimization.history} & filterable table; per-pass impact table\\
+Bytecode, VM state & instruction listing; frames, locals, operand stack & \code{bytecode}, trace snapshots & listing with current-instruction marker; stack diagram\\
+Debugger & source, breakpoints, call stack, output & \code{/api/debug/*} & Monaco decorations + replay\\
+Native x86-64 & assembly, registers vs.\ stack slots, memory-operand count & \code{/api/asm} & token-level syntax colouring, comparison bars\\
+SQL plan & operator tree with measured rows & \code{plan.tree} & indented tree with proportional bars\\
+SQL rewrites & rule, explanation, plan before/after & \code{plan.history} & side-by-side text\\
+Assistant diffs & unified diff of each fix & \code{/api/suggest} & coloured diff, verified badge\\ \bottomrule
+\end{tabularx}
+\caption{Every visualisation, its data source and technique.}
+\end{table}
+
+\section{A gallery}
+Figure~\ref{fig:gallery} shows four of the views side by side; each is a full-size screenshot elsewhere in the report (Chapters~\ref{ch:backends}, \ref{ch:sql} and~\ref{ch:platform}).
+
+\begin{figure}[H]\centering
+\begin{subfigure}[b]{0.49\textwidth}\fbox{\includegraphics[width=\textwidth]{img/ui_syntax.png}}\caption{LR(1) parse trace}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.49\textwidth}\fbox{\includegraphics[width=\textwidth]{img/ui_analysis.png}}\caption{CFG with true/false edges}\end{subfigure}\\[6pt]
+\begin{subfigure}[b]{0.49\textwidth}\fbox{\includegraphics[width=\textwidth]{img/ui_sql_plan.png}}\caption{SQL plan with measured rows}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.49\textwidth}\fbox{\includegraphics[width=\textwidth]{img/ui_native.png}}\caption{Native code and register use}\end{subfigure}
+\caption{Four of the studio's views.}\label{fig:gallery}
+\end{figure}
+
+\section{Figures computed from real compiler data}\label{sec:visfig}
+The five figures below are not screenshots: a script (\code{report/tools/gen\_vis.py}) runs the compiler on shipped examples and emits the plot data. They show the kind of insight the data makes visible.
+
+\subsection{How the LR(1) parser stack grows}
+Figure~\ref{fig:parsedepth} plots the parser stack depth at every step of parsing the shipped example \texttt{03\_fibonacci} (\VisParseSteps{} steps). The stack deepens as the parser enters nested constructs (a function, a block, an expression) and unwinds as it reduces them; its maximum of \VisParseMaxDepth{} is the deepest nesting, here a call inside an expression inside a \code{while} body.
+
+\begin{figure}[H]\centering
+\input{gen/vis_fig_parse}
+\caption{Parser stack depth over the \VisParseSteps{} steps of parsing \texttt{03\_fibonacci}.}\label{fig:parsedepth}
+\end{figure}
+
+\subsection{What the VM actually executes}
+Figure~\ref{fig:opcodes} counts the instructions the optimized program executed. \VisOpShare{}\% of the \VisOpTotal{} executed instructions are \code{LOAD}, \code{STORE} or \code{PUSH}: a stack machine spends most of its time moving values around, not computing. This is the empirical motivation for the native back end and for register allocation (Chapter~\ref{ch:backends}), where those moves largely disappear.
+
+\begin{figure}[H]\centering
+\input{gen/vis_fig_opcodes}
+\caption{VM instruction histogram for \texttt{03\_fibonacci} (optimized program).}\label{fig:opcodes}
+\end{figure}
+
+\subsection{How the optimizer converges}
+Figure~\ref{fig:rounds} stacks the \VisRewrites{} rewrites the optimizer made on \texttt{04\_optimization\_demo} by round and pass. Round~1 does the most varied work (propagation, folding, algebra, CSE); round~2 mops up what that exposed (new constants to propagate, dead stores to delete); later rounds make single clean-up rewrites until the \emph{fixed point} is reached (a final round with no change then stops the loop). It is a direct picture of the pass manager's ``repeat until nothing changes'' design.
+
+\begin{figure}[H]\centering
+\input{gen/vis_fig_rounds}
+\caption{Optimizer rewrites per round and pass on \texttt{04\_optimization\_demo}.}\label{fig:rounds}
+\end{figure}
+
+\subsection{Live ranges and register colours}
+Figure~\ref{fig:intervals} draws the live range of every variable of \code{fib\_iter} from the liveness analysis, coloured by the graph-colouring allocator of the studio's \emph{CFG \& Data-flow} page with $K=\VisRaK$ registers: \VisRaVars{} variables, \VisRaColors{} colours used, \VisRaSpills{} spill, and \VisRaMinK{} registers needed for no spill at all. Two bars of the same colour never overlap in time --- that is precisely the condition for two variables to share a register.
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=1cm,y=1cm]
+\input{gen/vis_intervals}
+\end{tikzpicture}
+\caption{Live ranges of the variables of \texttt{fib\_iter}, coloured by register assignment (black = spilled).}\label{fig:intervals}
+\end{figure}
+
+\subsection{Where a query's rows go}
+Figure~\ref{fig:sqlrows} shows the measured row count at every operator of the optimized plan of the order-report query of Chapter~\ref{ch:sql} (data flows from the bottom to the top). The query scanned \VisSqlScanned{} rows in total; thanks to predicate pushdown and the hash join only \VisSqlPairs{} row pairs were compared in the join. The ``funnel'' shape --- many rows at the bottom, few at the top --- is what a good plan looks like.
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=1cm,y=1cm]
+\input{gen/vis_sqlrows}
+\end{tikzpicture}
+\caption{Rows produced by each operator of the optimized plan (top = last operator, bottom = scans; indentation shows nesting).}\label{fig:sqlrows}
+\end{figure}
+
+\section{Implementation notes}
+\begin{itemize}
+  \item \textbf{Graphs.} AST and CFG views use React Flow with layout algorithms written for this project (tidy tree for the AST, layered layout with back-edge routing for the CFG). The layouts are pure functions and are covered by unit tests (\code{features/ast/layout.test.ts}, \code{features/cfg/layout.test.ts}).
+  \item \textbf{Editor.} Monaco provides diagnostics squiggles from compiler ranges, breakpoints and current-line decoration in the debugger, and a custom \nova{} syntax definition (keywords, types, built-ins, strings).
+  \item \textbf{Replay.} Parse traces, data-flow histories and VM snapshots are plain arrays; a shared stepper component moves an index over them, so the same controls work for all.
+  \item \textbf{Plan tree.} A recursive component draws operators with an operator-coloured badge and a bar proportional to the measured rows relative to the largest operator.
+  \item \textbf{Assembly colouring.} A small tokenizer colours mnemonics (jumps and calls amber, compares green), callee-saved registers blue and stack slots red, so register allocation is visible at a glance.
+  \item \textbf{Lazy loading.} Pages and heavy components (Monaco, React Flow) are loaded on demand, so the first screen appears quickly.
+\end{itemize}
+
+\section{How the visualisations were checked}
+Each page was loaded in a headless Chrome driven by Playwright, example programs were selected, buttons clicked, and the console watched: \textbf{zero browser errors} over the whole tour; the screenshots in this report come from that run. Vitest tests cover the layout algorithms, the data-flow stepper, the SQL page (rows, NULL rendering, optimizer history, API failure) and the assistant page (verified badges, diffs, inline code, ``not configured'' state).
+
+\begin{warnbox}
+Not verified: accessibility (screen-reader support, colour-blind palettes beyond the use of labels and icons alongside colour), narrow-screen layouts beyond the responsive breakpoints in the CSS, and the layout of very large graphs (hundreds of basic blocks).
+\end{warnbox}
