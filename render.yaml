@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: nova-compiler
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: ANTHROPIC_API_KEY   # optional: only enables the AI-assist page
+        sync: false

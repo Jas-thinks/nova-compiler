@@ -1,0 +1,8 @@
+.git
+**/node_modules
+**/.venv
+compiler/build
+compiler/build-san
+frontend/dist
+**/__pycache__
+report
