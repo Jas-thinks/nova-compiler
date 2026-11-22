@@ -332,9 +332,15 @@ Json analyzeFunctionJson(const IRFunction& fn, int regK) {
     return j;
 }
 
-Json analyzeProgramJson(const IRProgram& p, int regK) {
+// Interactive-analysis budget: the full analysis suite (liveness history, reaching definitions, SSA, available expressions,
+// constant propagation, interference-graph colouring) is super-linear in function size and produces megabytes of JSON, which no
+// page can display usefully. Functions above the limit are skipped (the compiler itself is unaffected) and reported separately.
+Json analyzeProgramJson(const IRProgram& p, int regK, std::vector<std::pair<std::string, size_t>>* skipped) {
     Json a = Json::array();
-    for (auto& f : p.functions) a.push(analyzeFunctionJson(f, regK));
+    for (auto& f : p.functions) {
+        if (f.code.size() > kMaxAnalysisInstructions) { if (skipped) skipped->emplace_back(f.name, f.code.size()); continue; }
+        a.push(analyzeFunctionJson(f, regK));
+    }
     return a;
 }
 

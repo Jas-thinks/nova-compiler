@@ -144,7 +144,11 @@ Json resultToJson(const CompileResult& r, const CompileOptions& opt) {
         ir.set("original", r.ir.toJson()).set("optimized", r.opt.program.toJson());
         j.set("ir", ir);
         Json an = Json::object();
-        an.set("original", analyzeProgramJson(r.ir)).set("optimized", analyzeProgramJson(r.opt.program));
+        std::vector<std::pair<std::string, size_t>> skipped;
+        an.set("original", analyzeProgramJson(r.ir, 4, &skipped)).set("optimized", analyzeProgramJson(r.opt.program));
+        Json sk = Json::array();
+        for (auto& [name, n] : skipped) { Json o = Json::object(); o.set("function", name).set("instructions", static_cast<long long>(n)).set("limit", static_cast<long long>(kMaxAnalysisInstructions)); sk.push(o); }
+        an.set("skipped", sk);
         j.set("analysis", an);
         Json o = r.opt.toJson();
         o.set("config", opt.opt.toJson());

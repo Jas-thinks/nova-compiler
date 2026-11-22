@@ -92,6 +92,7 @@ std::vector<std::string> verifySSA(const SsaFunction& ssa, const CFG& cfg);
 std::vector<std::set<int>> dominanceFrontiers(const CFG& cfg);
 
 Json analyzeFunctionJson(const IRFunction& fn, int regK = 4);
-Json analyzeProgramJson(const IRProgram& p, int regK = 4);
+constexpr size_t kMaxAnalysisInstructions = 600;   // per-function budget for the (display-oriented) analysis JSON
+Json analyzeProgramJson(const IRProgram& p, int regK = 4, std::vector<std::pair<std::string, size_t>>* skipped = nullptr);
 
 } // namespace nova

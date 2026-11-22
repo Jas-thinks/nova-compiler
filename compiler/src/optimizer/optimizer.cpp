@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <unordered_map>
 #include <sstream>
 
 namespace nova {
@@ -90,8 +91,15 @@ bool constProp(Ctx& c) {
     for (auto& i : c.fn->code)
         if (i.kind == IRInstr::Copy && i.dst.isName() && i.a.isConst() && defCount[i.dst.name] == 1) globalConst[i.dst.name] = i.a;
     std::map<std::string, Operand> env;
+    std::unordered_map<std::string, std::set<std::string>> copiesOf;     // v -> names whose env value is the copy "v" (reverse index)
+    auto envErase = [&](const std::string& k) {
+        auto it = env.find(k);
+        if (it == env.end()) return;
+        if (it->second.isName()) { auto r = copiesOf.find(it->second.name); if (r != copiesOf.end()) r->second.erase(k); }
+        env.erase(it);
+    };
     for (auto& i : c.fn->code) {
-        if (i.kind == IRInstr::Label) { env.clear(); continue; }
+        if (i.kind == IRInstr::Label) { env.clear(); copiesOf.clear(); continue; }
         std::string before = i.str();
         std::vector<std::string> notes;
         auto sub = [&](Operand& o) {
@@ -116,11 +124,12 @@ bool constProp(Ctx& c) {
             c.rec("constant_propagation", before, i.str(), why + ", so uses are replaced by the known value.", i);
         }
         if (defines(i)) {
-            env.erase(i.dst.name);
-            for (auto it = env.begin(); it != env.end();) { if (it->second.isName() && it->second.name == i.dst.name) it = env.erase(it); else ++it; }
+            envErase(i.dst.name);
+            auto dep = copiesOf.find(i.dst.name);                         // entries that were a copy of the redefined name are stale now
+            if (dep != copiesOf.end()) { std::vector<std::string> stale(dep->second.begin(), dep->second.end()); for (auto& k : stale) envErase(k); copiesOf.erase(i.dst.name); }
             if (i.kind == IRInstr::Copy) {
                 if (i.a.isConst()) env[i.dst.name] = i.a;
-                else if (i.a.isName() && i.a.name != i.dst.name) env[i.dst.name] = i.a;
+                else if (i.a.isName() && i.a.name != i.dst.name) { env[i.dst.name] = i.a; copiesOf[i.a.name].insert(i.dst.name); }
             }
         }
     }
@@ -219,11 +228,23 @@ bool algebraic(Ctx& c) {
 
 // ---------- local common subexpression elimination ----------
 bool cse(Ctx& c) {
-    struct Avail { std::string key; Operand holder; std::vector<std::string> deps; };
-    std::vector<Avail> table;
+    struct Avail { Operand holder; std::vector<std::string> deps; };
+    std::unordered_map<std::string, Avail> table;                              // expression key -> available value
+    std::unordered_map<std::string, std::vector<std::string>> affects;          // variable -> keys that mention it (as holder or operand)
     bool changed = false;
+    auto invalidate = [&](const std::string& d) {                               // O(#affected entries) instead of scanning the whole table
+        auto it = affects.find(d);
+        if (it == affects.end()) return;
+        for (auto& k : it->second) {
+            auto t = table.find(k);
+            if (t == table.end()) continue;
+            const Avail& e = t->second;
+            if (e.holder.name == d || std::find(e.deps.begin(), e.deps.end(), d) != e.deps.end()) table.erase(t);   // ignore stale index entries
+        }
+        affects.erase(it);
+    };
     for (auto& i : c.fn->code) {
-        if (i.kind == IRInstr::Label) { table.clear(); continue; }
+        if (i.kind == IRInstr::Label) { table.clear(); affects.clear(); continue; }
         bool pure = i.kind == IRInstr::Bin || i.kind == IRInstr::Un;
         std::string key;
         if (pure) {
@@ -233,22 +254,27 @@ bool cse(Ctx& c) {
         }
         bool replaced = false;
         if (pure) {
-            for (auto& e : table) if (e.key == key) {
+            auto f = table.find(key);
+            if (f != table.end()) {
+                const Operand holder = f->second.holder;
                 std::string before = i.str();
-                IRInstr n = i; n.kind = IRInstr::Copy; n.a = e.holder; n.b = Operand::none();
-                c.rec("cse", before, n.str(), "The same expression was already computed into " + e.holder.str() + " and neither operand changed since, so the value is reused.", i);
-                i = n; changed = true; replaced = true; break;
+                IRInstr n = i; n.kind = IRInstr::Copy; n.a = holder; n.b = Operand::none();
+                c.rec("cse", before, n.str(), "The same expression was already computed into " + holder.str() + " and neither operand changed since, so the value is reused.", i);
+                i = n; changed = true; replaced = true;
             }
         }
         if (defines(i)) {
-            const std::string& d = i.dst.name;
-            table.erase(std::remove_if(table.begin(), table.end(), [&](const Avail& e) {
-                return e.holder.name == d || std::find(e.deps.begin(), e.deps.end(), d) != e.deps.end(); }), table.end());
+            const std::string d = i.dst.name;
+            invalidate(d);
             if (pure && !replaced) {
-                Avail e; e.key = key; e.holder = i.dst;
+                Avail e; e.holder = i.dst;
                 if (i.a.isName()) e.deps.push_back(i.a.name);
                 if (i.b.isName()) e.deps.push_back(i.b.name);
-                if (std::find(e.deps.begin(), e.deps.end(), d) == e.deps.end()) table.push_back(e);
+                if (std::find(e.deps.begin(), e.deps.end(), d) == e.deps.end()) {
+                    affects[e.holder.name].push_back(key);
+                    for (auto& dn : e.deps) affects[dn].push_back(key);
+                    table[key] = std::move(e);
+                }
             }
         }
     }

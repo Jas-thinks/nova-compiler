@@ -201,7 +201,7 @@ Error messages teach, but fixing them is slow. The assistant's rule: \emph{the c
 \item For a crashing program (such as a division by zero), read the root-cause analysis built from the VM's recorded trace.
 \item Optionally press the AI fix button; the proposal is shown only if the compiler accepts it.}
 \gpex{\code{fn main() \{ print(x); \}} -- the compiler reports an undefined variable; the verified fix adds \code{let x: int = 0;} before the use, and the program then compiles with 0 errors.}
-\gptip{Without an AI key everything except the AI buttons works. On the hosted demo a free OpenRouter model is configured; its wording may vary, but its fix is still re-checked by the compiler (up to 3 attempts).}
+\gptip{Without an AI key everything except the AI buttons works. On the hosted demo Claude Haiku 5.5 is configured through OpenRouter; its proposal is always re-checked by the compiler before you see it (up to 3 attempts).}
 
 % =============================================================== 7
 \gphead{7}{SQL Compiler}{Workspace}{a second compiler for a database language}

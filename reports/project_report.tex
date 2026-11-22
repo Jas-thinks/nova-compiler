@@ -343,7 +343,7 @@ Runtime analysis&no&Runs the VM with tracing and derives the root cause of a tra
 AI fix / debug&yes&A model proposes a program; the compiler re-checks it (3 attempts, each given the new diagnostics); only compiling candidates are returned\\\bottomrule
 \end{tabularx}
 \end{center}
-The AI layer supports Anthropic and OpenRouter (free models) through one small adapter. Unavailable AI never breaks the page: it shows a message and the rule-based features continue to work.
+The AI layer supports the Anthropic API directly or Claude through OpenRouter, using one small adapter. Unavailable AI never breaks the page: it shows a message and the rule-based features continue to work.
 
 % ------------------------------------------------------------------ 10
 \section{The studio (frontend)}
@@ -487,7 +487,7 @@ Interprocedural inlining makes a hot loop that calls small helpers \textbf{2.19$
 \item \textbf{Scripts}: \code{dev.sh} (build and run everything), \code{serve.sh} (single process), \code{test.sh} (all suites), \code{sanitize.sh}, \code{bench.sh}.
 \item \textbf{CI}: GitHub Actions runs the full test job and a sanitizer job on every push.
 \item \textbf{Docker}: a multi-stage \code{Dockerfile} builds the frontend, compiles the C++ core and serves everything from one container (also described by a Render blueprint).
-\item \textbf{Live deployment on Vercel}: the C++ core is compiled to a fully static Linux binary and called from a Python serverless function, with the studio served from the CDN. The optional AI features use a free OpenRouter model whose key is held as a server-side environment variable, never in the code.
+\item \textbf{Live deployment on Vercel}: the C++ core is compiled to a fully static Linux binary and called from a Python serverless function, with the studio served from the CDN. The AI features call Claude Haiku~5.5 through OpenRouter, with the key held as a server-side environment variable, never in the code.
 \end{itemize}
 \begin{warn}[Deployment limits]
 On the free serverless host the native back end cannot link (no gcc), the C compiler viewer has no toolchain, and the \emph{unit-test} button of the Compiler Tests page needs the test binary, which is not deployed. All other pages work; the full platform runs locally or from the Docker image.
@@ -530,7 +530,7 @@ docker build -t nova .&container with compiler, API and studio\\\bottomrule
 \item The native back end targets x86-64 System~V only; the VM and the native code share arithmetic definitions.
 \item Optimizations are not yet loop-aware (no loop-invariant code motion or global value numbering).
 \item NOVA-SQL has no subqueries, \code{UNION}, window functions, indexes or persistence.
-\item Free-model AI output varies in quality, which is why every suggestion is re-checked by the compiler.
+\item AI output can still be wrong or vary between calls, which is why every suggestion is re-checked by the compiler before it is shown.
 \end{itemize}
 \textbf{Future work:} loop optimizations on the SSA form, an LLVM-IR back end, LALR/Pager table-size comparison, garbage-collected heap visualisation and cost-based SQL join ordering.
 

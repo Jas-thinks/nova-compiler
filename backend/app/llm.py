@@ -11,7 +11,7 @@ import os
 import httpx
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = os.environ.get("NOVA_OPENROUTER_MODEL", "openrouter/free")
+OPENROUTER_MODEL = os.environ.get("NOVA_OPENROUTER_MODEL", "anthropic/claude-haiku-5.5")
 MODEL = os.environ.get("NOVA_LLM_MODEL", "claude-haiku-5-5")
 API_URL = "https://api.anthropic.com/v1/messages"
 

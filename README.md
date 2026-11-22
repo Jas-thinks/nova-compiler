@@ -1,5 +1,7 @@
 # NOVA — Compiler Engineering Platform
 
+> **Live demo: https://nova-compiler-psi.vercel.app** · Reports: [`reports/project_report.pdf`](reports/project_report.pdf) (project report) · [`reports/user_guide.pdf`](reports/user_guide.pdf) (user guide)
+>
 > Two compilers, one native backend, one studio. **NOVA** (a statically typed language → LR(1) parser → SSA analyses → optimizer → VM / x86-64) and **NOVA-SQL** (SQL → logical plan → rule-based optimizer → bytecode VM → executor), all visualised from *real compiler output* and **verified against independent oracles** (reference interpreter, native code, SQLite).
 
 ```
@@ -21,7 +23,7 @@ GROUP BY u.name HAVING SUM(o.amount) > 5 ORDER BY total DESC LIMIT 5;   -- ... b
 | **NOVA middle end** | 3-address IR, **CFG / dominators / liveness / reaching definitions / pruned SSA**, **7 optimization passes** incl. **interprocedural inlining** (call-graph recursion check, size limits), full per-rewrite history | Reference interpreter ≡ VM ≡ optimized VM on 1000s of random programs; injected-optimizer-bug test proves the checker can fail |
 | **NOVA back end** | Stack **bytecode VM** with time-travel debugger; **native x86-64** (System V) with a **linear-scan register allocator**, heap arrays & strings, runtime traps | Native output ≡ VM output on every example + random programs (`scripts/native_diff.sh`); ASan/UBSan clean |
 | **NOVA-SQL** | Lexer, recursive-descent parser, binder/type checker (**3-valued NULL logic**), logical plan, optimizer (**constant folding, predicate pushdown through joins, hash join, top-N**), expression bytecode VM, executor, `CASE`, joins/aggregates/`HAVING`/`DISTINCT`/`ORDER BY`/`LIMIT` | **Differential fuzzer vs SQLite** (thousands of random schemas+queries agree; it found a real bug), garbled-input fuzzing under sanitizers |
-| **Assistant** | Compiler-**verified quick fixes**, iterative auto-fix, rule-based **runtime root-cause analysis** (no API key), optional Claude fixes re-checked by the compiler, LSP quick-fix code actions | A fix is "verified" only if applying it and re-compiling removes the error without adding new ones |
+| **Assistant** | Compiler-**verified quick fixes**, iterative auto-fix, rule-based **runtime root-cause analysis** (no API key), optional Claude fixes (Anthropic key or OpenRouter key) re-checked by the compiler, LSP quick-fix code actions | A fix is "verified" only if applying it and re-compiling removes the error without adding new ones |
 | **Tooling** | FastAPI service with sandboxed subprocess execution, **language server (LSP)**, React/TypeScript studio (20 pages, Monaco, React Flow), CI workflow | 289 automated tests + fuzzers (below) |
 
 ## Quick start
@@ -85,7 +87,7 @@ scripts/    dev / build / serve / test / sanitize / bench / native build / SQL f
 [Project report (PDF)](report/nova_report.pdf) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [COMPILER_PIPELINE](docs/COMPILER_PIPELINE.md) · [SQL](docs/SQL.md) · [ADVANCED_ANALYSIS](docs/ADVANCED_ANALYSIS.md) · [LANGUAGE_SPEC](docs/LANGUAGE_SPEC.md) · [GRAMMAR](docs/GRAMMAR.md) · [PARSING_ALGORITHM](docs/PARSING_ALGORITHM.md) · [IR_AND_OPTIMIZATION](docs/IR_AND_OPTIMIZATION.md) · [BYTECODE_SPEC](docs/BYTECODE_SPEC.md) · [API_DOCUMENTATION](docs/API_DOCUMENTATION.md) · [TESTING](docs/TESTING.md) · [DEMO_SCRIPT](docs/DEMO_SCRIPT.md)
 
 ## Honest limitations
-No garbage collector (allocations live until exit and are capped) · strings are immutable byte strings · arrays are single-level `int[]/float[]/bool[]` · floats are not register-allocated (SysV has no callee-saved xmm) · inlining skips recursive and large callees · NOVA-SQL has no subqueries, `UNION`, window functions or indexes and keeps everything in memory · Claude-based fixes were only exercised against a scripted model (no API key in the test environment) · the VS Code client in `editors/vscode` has not been run in a real VS Code session.
+No garbage collector (allocations live until exit and are capped) · strings are immutable byte strings · arrays are single-level `int[]/float[]/bool[]` · floats are not register-allocated (SysV has no callee-saved xmm) · inlining skips recursive and large callees · NOVA-SQL has no subqueries, `UNION`, window functions or indexes and keeps everything in memory · Claude-based fixes are unit-tested against a scripted model and were also tried live through OpenRouter · the VS Code client in `editors/vscode` has not been run in a real VS Code session.
 
 ## Safety
 The backend never uses a shell; external tools run with argv only, a wall-clock timeout, an output cap, CPU/memory rlimits (reported by `/api/health` when unavailable), and source/step/depth limits; SQL has row, join-pair and result caps. **There is no container/namespace/seccomp isolation** — run the service inside a container or VM before exposing it to untrusted users.
