@@ -1,0 +1,57 @@
+% Shared visual style for the NOVA project report and user guide.
+\NeedsTeXFormat{LaTeX2e}\ProvidesPackage{nova}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{lmodern}
+\RequirePackage{mathpazo}
+\RequirePackage[scaled=.92]{helvet}
+\RequirePackage{microtype}
+\RequirePackage[a4paper,margin=2.2cm,top=2.4cm,bottom=2.3cm,headheight=15pt]{geometry}
+\RequirePackage{xcolor,graphicx,booktabs,array,tabularx,enumitem,titlesec,fancyhdr,lastpage,tikz,etoolbox}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{listings}
+\RequirePackage{needspace}
+\RequirePackage{tocloft}
+\setlength{\cftbeforesecskip}{3pt}\renewcommand{\cftsecfont}{\sffamily\color{ink}}\renewcommand{\cftsecpagefont}{\sffamily\color{ink}}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc,backgrounds,decorations.pathmorphing}
+\definecolor{ink}{HTML}{1B1F3B}
+\definecolor{indigo}{HTML}{3730A3}
+\definecolor{violet}{HTML}{6D5BD0}
+\definecolor{teal}{HTML}{0E9F8E}
+\definecolor{amber}{HTML}{F59E0B}
+\definecolor{rose}{HTML}{E11D48}
+\definecolor{mist}{HTML}{F3F4FB}
+\definecolor{slate}{HTML}{5B6078}
+\RequirePackage[colorlinks=true,linkcolor=indigo,urlcolor=teal,citecolor=indigo,pdfborder={0 0 0}]{hyperref}
+\renewcommand{\familydefault}{\rmdefault}
+\setlength{\parindent}{0pt}\setlength{\parskip}{5pt plus 1pt}
+\linespread{1.07}
+\setlist{nosep,leftmargin=1.4em,itemsep=2pt}
+\setlist[itemize]{label=\textcolor{teal}{\textbullet}}
+\newcommand{\sans}{\sffamily}
+\newcommand{\nova}{\textsc{Nova}}
+% headings
+\titleformat{\chapter}[block]{\sffamily\bfseries\Huge\color{indigo}}{}{0pt}{}
+\titleformat{\section}{\sffamily\bfseries\Large\color{indigo}}{\thesection}{.6em}{}[{\color{teal}\titlerule[1.4pt]}]
+\titleformat{\subsection}{\sffamily\bfseries\large\color{ink}}{\thesubsection}{.6em}{}
+\titlespacing*{\section}{0pt}{14pt}{8pt}\titlespacing*{\subsection}{0pt}{9pt}{4pt}
+\pretocmd{\section}{\needspace{7\baselineskip}}{}{}
+\pretocmd{\subsection}{\needspace{5\baselineskip}}{}{}
+% header / footer
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\newcommand{\runtitle}{}
+\fancyhead[L]{\sffamily\small\color{slate}\runtitle}
+\fancyhead[R]{\sffamily\small\color{slate}Jaswinder Singh \textbullet{} 12340970}
+\fancyfoot[C]{\sffamily\small\color{slate}\thepage}
+\fancypagestyle{plain}{\fancyhf{}\renewcommand{\headrulewidth}{0pt}\fancyfoot[C]{\sffamily\small\color{slate}\thepage}}
+% boxes
+\tcbset{boxstyle/.style={enhanced,breakable,colback=mist,colframe=indigo!70,boxrule=0.6pt,arc=3pt,left=8pt,right=8pt,top=5pt,bottom=5pt,fonttitle=\sffamily\bfseries\small,coltitle=white,colbacktitle=indigo,attach boxed title to top left={yshift=-2.2mm,xshift=6pt},boxed title style={arc=2pt,boxrule=0pt,top=1pt,bottom=1pt}}}
+\newtcolorbox{note}[1][Note]{boxstyle,title=#1}
+\newtcolorbox{aim}[1][Aim]{boxstyle,colframe=teal!80!black,colbacktitle=teal!80!black,colback=teal!6,title=#1}
+\newtcolorbox{warn}[1][Limitation]{boxstyle,colframe=amber!90!black,colbacktitle=amber!90!black,colback=amber!8,title=#1}
+\newtcolorbox{inout}[2][]{enhanced,breakable,colback=white,colframe=violet!70,boxrule=0.6pt,arc=3pt,left=8pt,right=8pt,top=4pt,bottom=4pt,fonttitle=\sffamily\bfseries\small,title=#2,#1}
+\lstdefinelanguage{nova}{morekeywords={fn,let,if,else,while,return,print,true,false,int,float,bool,string,new,len,to_int,to_float},sensitive=true,morecomment=[l]{//},morestring=[b]"}
+\lstset{basicstyle=\ttfamily\small,keywordstyle=\color{indigo}\bfseries,commentstyle=\color{slate}\itshape,stringstyle=\color{teal!70!black},backgroundcolor=\color{mist},frame=single,rulecolor=\color{violet!40},framesep=5pt,xleftmargin=2pt,xrightmargin=2pt,columns=fullflexible,keepspaces=true,aboveskip=4pt,belowskip=4pt,breaklines=true,language=nova}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\kv}[2]{\textbf{\sffamily\color{indigo}#1}\hfill #2\par}

@@ -1,0 +1,415 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{nova}
+\renewcommand{\runtitle}{NOVA Platform -- User Guide}
+\hypersetup{pdftitle={NOVA Compiler Engineering Platform - User Guide},pdfauthor={Jaswinder Singh (12340970)}}
+\setlength{\parskip}{4pt plus 1pt}
+% ---- page template ----------------------------------------------------------------------
+\newcommand{\gphead}[4]{\clearpage\addcontentsline{toc}{section}{\protect\numberline{#1}#2}%
+\begin{tikzpicture}[baseline]\node[fill=indigo,text=white,rounded corners=4pt,minimum size=11mm,font=\sffamily\bfseries\Large] (n) {#1};
+\node[right=3mm of n,anchor=west,font=\sffamily\bfseries\LARGE,text=ink] (t) {#2};
+\node[below=0mm of t.south west,anchor=north west,font=\sffamily\small,text=teal!70!black] {#3\ $\cdot$\ \textit{#4}};\end{tikzpicture}\par\vspace{16pt}\noindent\textcolor{teal}{\rule{\linewidth}{1.2pt}}\par\vspace{2pt}}
+\newcommand{\gpwhat}[1]{\textbf{\sffamily\color{indigo}What this page is.}\ #1\par}
+\newcommand{\gpio}[2]{\par\vspace{2pt}\noindent\begin{minipage}[t]{.485\linewidth}\begin{tcolorbox}[enhanced,colback=white,colframe=violet!70,boxrule=.6pt,arc=3pt,left=6pt,right=6pt,top=3pt,bottom=3pt,title={\sffamily\bfseries\small INPUT -- what you give it},fonttitle=\sffamily,coltitle=white,colbacktitle=violet!80,height=4.1cm,valign=top]#1\end{tcolorbox}\end{minipage}\hfill\begin{minipage}[t]{.485\linewidth}\begin{tcolorbox}[enhanced,colback=white,colframe=teal!80!black,boxrule=.6pt,arc=3pt,left=6pt,right=6pt,top=3pt,bottom=3pt,title={\sffamily\bfseries\small OUTPUT -- what you get},coltitle=white,colbacktitle=teal!80!black,height=4.1cm,valign=top]#2\end{tcolorbox}\end{minipage}\par\vspace{4pt}}
+\newcommand{\gpsteps}[1]{\textbf{\sffamily\color{indigo}Step by step}\vspace{-2pt}\begin{enumerate}[label=\textcolor{teal}{\bfseries\arabic*.},leftmargin=1.6em,itemsep=1.5pt]#1\end{enumerate}}
+\newcommand{\gpex}[1]{\begin{note}[Example]#1\end{note}\par}
+\newcommand{\gptip}[1]{\begin{warn}[Good to know]#1\end{warn}}
+\newcommand{\ui}[1]{\textbf{\sffamily\small #1}}
+\begin{document}
+% ---------------------------------------------------------------- cover
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[ink] (current page.south west) rectangle (current page.north east);
+  \fill[teal!85!black] ([yshift=-8.2cm]current page.north west) -- ([yshift=-5.4cm]current page.north east) -- (current page.north east) -- (current page.north west) -- cycle;
+  \fill[violet] ([yshift=-8.2cm]current page.north west) -- ([yshift=-8.9cm]current page.north west) -- ([yshift=-6.1cm]current page.north east) -- ([yshift=-5.4cm]current page.north east) -- cycle;
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Huge] at ([xshift=2.2cm,yshift=-3cm]current page.north west) {NOVA};
+  \node[anchor=north west,text=white,font=\sffamily\large] at ([xshift=2.2cm,yshift=-4.4cm]current page.north west) {Compiler Engineering Platform};
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large] at ([xshift=2.2cm,yshift=-12cm]current page.north west) {User Guide};
+  \node[anchor=north west,text=white!85,font=\sffamily,align=left,text width=15cm] at ([xshift=2.2cm,yshift=-13.1cm]current page.north west) {A page-by-page tour of the platform: what each page does, what you give it, what you get back, and why it exists.};
+  \draw[teal,line width=2pt] ([xshift=2.2cm,yshift=-17.6cm]current page.north west) -- ++(3cm,0);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\large] at ([xshift=2.2cm,yshift=-18cm]current page.north west) {Jaswinder Singh};
+  \node[anchor=north west,text=white!85,font=\sffamily,align=left] at ([xshift=2.2cm,yshift=-19cm]current page.north west) {Student ID: 12340970\\Course: Compiler Design\\November 2026};
+  \node[anchor=south west,text=white!60,font=\sffamily\small] at ([xshift=2.2cm,yshift=1.4cm]current page.south west) {nova-compiler-psi.vercel.app};
+\end{tikzpicture}
+\clearpage
+\pagenumbering{roman}
+\setcounter{tocdepth}{1}
+\renewcommand{\contentsname}{Contents -- the 20 pages of the platform}
+\tableofcontents
+% ---------------------------------------------------------------- about
+\clearpage
+\section*{About the platform}
+\addcontentsline{toc}{section}{About the platform, quick start and troubleshooting}
+\textbf{NOVA} is a learning and engineering platform for \emph{compiler design}. A compiler turns a program you write into something a machine can run, passing through many hidden steps. NOVA makes every step visible: you type a small program, press a button, and the platform shows what each step produced -- using the output of a real compiler, not an animation.
+
+\begin{aim}[Aim of the platform]
+Make each phase of a compiler inspectable and verifiable: every number, tree and table on screen is produced by the compiler itself, and optimizations are checked against an independent interpreter.
+\end{aim}
+
+\textbf{What you can do with it.}
+\begin{itemize}
+\item Write programs in \textbf{NOVA}, a small typed language (numbers, true/false, text, arrays, functions, loops), and see them compiled.
+\item Run \textbf{SQL} queries on the built-in \textbf{NOVA-SQL} compiler and see how the query is planned and optimized.
+\item Step through execution \textbf{forwards and backwards} in a debugger, and view native \textbf{x86-64 assembly}.
+\item Get \textbf{verified fixes} for errors: a suggested fix is only offered if the compiler confirms it works.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[font=\sffamily\scriptsize,node distance=3.2mm,box/.style={draw=indigo,fill=mist,rounded corners=2pt,minimum height=8mm,minimum width=17mm,align=center},arr/.style={-{Stealth[length=1.6mm]},draw=slate}]
+\node[box](a){Your\\program};\node[box,right=of a](b){Lexical\\analysis};\node[box,right=of b](c){Syntax\\analysis};\node[box,right=of c](d){Semantic\\analysis};\node[box,right=of d,fill=teal!14](e){Intermediate\\code};\node[box,right=of e,fill=teal!14](f){Optimizer};\node[box,right=of f,fill=violet!15](g){Run /\\native code};
+\foreach \x/\y in {a/b,b/c,c/d,d/e,e/f,f/g}{\draw[arr](\x)--(\y);}
+\end{tikzpicture}\\[2pt]{\scriptsize\color{slate}The journey every program takes. Each box has its own page in the platform.}
+\end{center}
+
+\textbf{Getting started in five minutes.}
+\begin{enumerate}[label=\textcolor{teal}{\bfseries\arabic*.}]
+\item Open the website. You land on the \ui{Dashboard} (page 1) and see the platform's health.
+\item Click \ui{Compiler Playground} in the left menu (page 2). Choose an example from the example list, then press \ui{Compile}.
+\item Click any stage of the pipeline to inspect it, then press \ui{Run} to see the program's output.
+\item Use the left menu to open the other pages: they all show the \emph{same program} you just compiled, each from a different angle.
+\item Introduce a mistake on purpose (delete a semicolon) and open \ui{AI Assistant} (page 6) to see it fixed and verified.
+\end{enumerate}
+
+\textbf{The left menu groups the 20 pages.}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\sffamily\color{indigo}}l l X@{}}\toprule
+Group&Pages&Use it to\dots\\\midrule
+Workspace&1 -- 7&start, write code, learn, visualise, get help, use SQL\\
+Front end&8 -- 11&see how text becomes tokens, a tree and typed symbols\\
+Middle \& back end&12 -- 16&see intermediate code, analyses, optimization, bytecode, native code\\
+Runtime&17 -- 18&run a program step by step and watch memory\\
+Project&19 -- 20&run the test suites; read the reference\\\bottomrule
+\end{tabularx}
+\end{center}
+\clearpage
+\section*{How to read each page of this guide}
+\addcontentsline{toc}{section}{How to read this guide}
+Every platform page has exactly one page in this guide (guide page $n$ describes page $n$ of the left menu). All pages use the same layout:
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\sffamily\color{indigo}}l X@{}}\toprule
+What this page is&one-paragraph description in plain words\\
+Why we added it&the aim: the problem this page solves for a learner or an engineer\\
+Input / Output&what you must give the page, and exactly what it shows back\\
+Step by step&a short procedure you can follow\\
+Example&a real result from the compiler, using one shared sample program\\
+Good to know&limits, shortcuts and hints\\\bottomrule
+\end{tabularx}
+\end{center}
+\textbf{The sample program used in the examples.} Where an example shows real numbers, it comes from this program, compiled by the actual compiler:
+\begin{lstlisting}
+fn main() {
+    let result: int = 10 + 20 * 2;
+    let i: int = 0;
+    while (i < 3) { print(result + i); i = i + 1; }
+}
+\end{lstlisting}
+It prints \code{50}, \code{51}, \code{52}. Compiling it gives 45 tokens, 149 parser steps, 24 AST nodes, 14 IR instructions (11 after optimization), 24 bytecode instructions and 68 executed VM steps.
+
+\textbf{Shared program and the top bar.} Every page except \ui{AI Assistant} and \ui{SQL Compiler} works on the \emph{current program}: compile it once and all the analysis pages show their data. If a page says ``compile first'', press \ui{Compile} in the Playground.
+
+\textbf{Keyboard shortcuts.} \code{Ctrl+Enter} runs an SQL script; in the Debugger \code{F5} continue, \code{F10} step over, \code{F11} step into the next source line, \code{Shift+F11} step one instruction.
+
+\begin{note}[Troubleshooting]\small
+\textbf{``Backend not reachable''} -- the server is asleep or restarting; wait a minute and reload. \textbf{A page is empty} -- nothing has been compiled yet; compile in the Playground. \textbf{``No C toolchain on the server''} (Explorer) -- the host has no gcc/clang; this is expected on the hosted demo. \textbf{AI buttons say a key is needed} -- the server has no AI key configured; everything else still works. \textbf{Native code cannot run} -- the hosted demo has no gcc; the assembly itself is still shown.
+\end{note}
+
+% =============================================================== 1
+\clearpage\pagenumbering{arabic}
+\gphead{1}{Dashboard}{Workspace}{your control panel and proof that the platform is real}
+\gpwhat{The landing page. It shows whether the server and compiler are healthy, what the compiler can really do, and a summary of the last program you compiled.}
+\begin{aim}[Why we added it]
+Anyone evaluating a compiler project should be able to see, in one glance, that the numbers are \emph{measured}, not typed into the page. At start-up the server compiles a hidden probe program, compares the result with an independent interpreter, and reports it here.
+\end{aim}
+\gpio{Nothing is required to view it. Optionally click a \ui{Quick start} link to jump to the Playground or the Optimization Lab.}{Tiles: \ui{Parser} (algorithm, number of states, conflicts), \ui{Backend} (compiler found), \ui{Examples} (count), \ui{Last compile}. A list of \emph{verified capabilities}. The \emph{last test run}. A \emph{Compilation pipeline} summary.}
+\gpsteps{\item Open the site: the Dashboard appears first.
+\item Read the tiles. The parser tile reads \textbf{Canonical LR(1), 432 states, 0 conflicts}.
+\item Look at \ui{Verified compiler capabilities}: it says whether the probe program matched the reference interpreter.
+\item Compile a program in the Playground and come back: the \ui{Compilation pipeline} box now lists tokens, parser steps, AST nodes, scopes/symbols, IR instructions, instructions after optimization, bytecode size and VM steps.
+\item Open \ui{Compiler Tests} (page 19) and run it; the Dashboard then shows the last test run.}
+\gpex{After compiling the sample program the pipeline box shows: \textbf{Tokens 45 $\cdot$ Parser steps 149 $\cdot$ AST nodes 24 $\cdot$ Scopes/symbols 3/2 $\cdot$ IR 14 $\cdot$ After optimization 11 $\cdot$ Bytecode 24 $\cdot$ VM steps 68.}}
+\gptip{``Execution boundaries'' lists the safety limits (source size, step limit, time limit). If the Backend tile reports a problem, the compiler binary is missing on the server.}
+
+% =============================================================== 2
+\gphead{2}{Compiler Playground}{Workspace}{write a program, compile it, inspect every stage}
+\gpwhat{The main workbench. A code editor, a seven-stage pipeline and the results panels. It is where you write NOVA programs and where most other pages get their data.}
+\begin{aim}[Why we added it]
+A compiler is a chain of stages, and learners usually see only the first and the last. The Playground puts all seven stages side by side with measured times, so you can see exactly where a program succeeds or fails.
+\end{aim}
+\gpio{A NOVA program in the editor (\ui{Source -- main.nova}), typed or loaded from the example list. Buttons: \ui{Compile} (analyse only) and \ui{Run} (analyse and execute).}{\ui{Pipeline}: Lexical, Syntax, AST, Semantic, IR, Optimization, Code generation -- each ok / failed / not run, with time. The \emph{stage inspector}. \ui{Problems} with line, column, explanation and suggestion. Program \ui{output}.}
+\gpsteps{\item Pick an example (for instance \emph{Arithmetic \& branching}) or type your own code.
+\item Press \ui{Compile}. Each stage turns green; the time in milliseconds appears.
+\item Click a stage to inspect its real output: tokens, parse statistics, AST, symbols, IR, optimizer log or bytecode.
+\item Press \ui{Run}. The output appears under \ui{Program output}.
+\item Break the code (rename a variable) and compile again: the failing stage turns red, later stages show \emph{Stage did not run}, and \ui{Problems} explains the error with a suggested fix.}
+\gpex{\code{let result: int = 10 + 20 * 2;} compiles in about 12 ms on average. With a missing semicolon the Syntax stage fails with ``expected \code{;}'' placed at the end of the previous token, and the Semantic and later stages do not run.}
+\gptip{An optional plain-language explanation of an error can be shown; it only rephrases the compiler's own diagnostic and never changes the result.}
+
+% =============================================================== 3
+\gphead{3}{Learn Mode}{Workspace}{a guided lesson that uses your own program}
+\gpwhat{A slide-like walk through the compilation stages. Each slide explains one stage and then fills in the real result for the program you compiled.}
+\begin{aim}[Why we added it]
+Documentation is generic, but understanding comes from seeing \emph{your} data. Learn Mode answers the same questions for every stage -- what, why, how -- and shows the actual input and output of that stage.
+\end{aim}
+\gpio{A compiled program (from the Playground) and the \ui{Next stage} / back buttons. If nothing is compiled it says \emph{Not executed yet}.}{For each stage: \emph{What this stage does}, \emph{Why it is needed}, \emph{Algorithm used}, \emph{Result}, \emph{Input received}, \emph{Actual output produced}, \emph{Measured facts} and \emph{How the output is passed on} to the next stage.}
+\gpsteps{\item Compile a program first.
+\item Open Learn Mode; the first slide is \emph{Lexical analysis}.
+\item Read the explanation panels, then compare with \ui{Actual output produced}.
+\item Press \ui{Next stage} to follow the data: tokens $\to$ parse tree $\to$ AST $\to$ symbols $\to$ IR $\to$ optimized IR $\to$ bytecode.
+\item Use the back button to revisit a stage.}
+\gpex{For the sample program the Syntax slide reports \textbf{149 steps, 45 shifts, 103 reduces}; the next slide shows that the parse tree became an AST of \textbf{24 nodes}.}
+\gptip{Best used in a classroom or viva: it follows the order in which a compiler textbook explains the phases.}
+
+% =============================================================== 4
+\gphead{4}{Compiler Explorer}{Workspace}{compare NOVA with industrial compilers}
+\gpwhat{A selector of ``languages''. \textbf{NOVA} offers the complete pipeline. \textbf{C} offers a thin viewer over whichever industrial compiler is installed on the server.}
+\begin{aim}[Why we added it]
+Seeing how a mature compiler (clang or gcc) treats a similar program gives the learner a reference point, in the spirit of the well-known Compiler Explorer, without replacing NOVA's own detailed pages.
+\end{aim}
+\gpio{Choose a language and type or load a program, then press \ui{Compile}.}{For NOVA: tokens, parse trace, AST, symbols, IR, CFG, data-flow, SSA, bytecode and execution. For C with clang: AST, LLVM IR and assembly. With gcc: GIMPLE, CFG and assembly.}
+\gpsteps{\item Open the page and read the list of languages and their status.
+\item Select \textbf{NOVA} or \textbf{C}.
+\item Enter code and press \ui{Compile}.
+\item Switch between the output tabs (for example AST $\to$ LLVM IR $\to$ assembly).
+\item Compare the same idea (a loop or a function call) across the two compilers.}
+\gpex{A C loop compiled by clang shows its LLVM IR with basic blocks and $\varphi$ nodes -- the same concepts that page 13 shows for NOVA's own IR.}
+\gptip{If the server has no C compiler the page shows \emph{No C toolchain on the server}. This is normal on the hosted demo; it works on any machine with clang or gcc installed.}
+
+% =============================================================== 5
+\gphead{5}{Visualisation}{Workspace}{charts computed from real compiler data}
+\gpwhat{Five charts and four summary tiles that turn the compiler's numbers into pictures.}
+\begin{aim}[Why we added it]
+Tables hide patterns. A chart of the parser stack, the optimizer's work per round, or the register live ranges shows at a glance how the algorithms behave. All data comes from the compile result; nothing is simulated.
+\end{aim}
+\gpio{A compiled program (shared). For the last chart, an SQL script run on page 7.}{Tiles: \ui{Parser steps}, \ui{Max stack depth}, \ui{Optimizer rewrites}, \ui{IR size change}. Charts: \emph{LR(1) parser stack depth}, \emph{What the VM executes} (opcode histogram), \emph{Optimizer rewrites per round}, \emph{Live ranges and register colours}, \emph{Where a SQL query's rows go}.}
+\gpsteps{\item Compile a program (otherwise it says \emph{Nothing compiled yet}).
+\item Read the tiles at the top.
+\item Hover a chart bar or line to read exact values.
+\item In the stack-depth chart, look for the peak: nested expressions make the parser stack grow.
+\item Run a query in the SQL Compiler to fill the last chart.}
+\gpex{Sample program: 149 parse steps with maximum stack depth \textbf{20}; IR size \textbf{14 $\to$ 11}; the optimizer works over \textbf{5 rounds} (8 rewrites in total), shown as one bar per round.}
+\gptip{Charts use a colour-blind-safe palette and adapt to light and dark themes.}
+
+% =============================================================== 6
+\gphead{6}{AI Assistant}{Workspace}{verified fixes for errors and runtime failures}
+\gpwhat{A helper with its own editor. It finds errors, proposes fixes, applies them in a loop, and explains why a program crashed at run time.}
+\begin{aim}[Why we added it]
+Error messages teach, but fixing them is slow. The assistant's rule: \emph{the compiler decides what is correct, never a model.} A fix is marked \textbf{verified} only if applying it and re-compiling removes the error without adding a new one.
+\end{aim}
+\gpio{A program typed in the editor (\emph{edit freely -- suggestions update live}).}{\ui{Quick fixes} with a verified badge and an \ui{Apply} button; \ui{Auto-fix} result (steps and diff); for runtime failures: \emph{Root cause}, \emph{Suggested fix}, \emph{Variables at the moment of failure}, \emph{Last VM steps}; optional \ui{AI fix}.}
+\gpsteps{\item Type or paste a program that has an error.
+\item Read the quick fixes; press \ui{Apply} on a verified one.
+\item Or press \ui{Auto-fix} to repeat fixes until the program compiles (up to 12 steps); review the diff.
+\item For a crashing program (such as a division by zero), read the root-cause analysis built from the VM's recorded trace.
+\item Optionally press the AI fix button; the proposal is shown only if the compiler accepts it.}
+\gpex{\code{fn main() \{ print(x); \}} -- the compiler reports an undefined variable; the verified fix adds \code{let x: int = 0;} before the use, and the program then compiles with 0 errors.}
+\gptip{Without an AI key everything except the AI buttons works. On the hosted demo a free OpenRouter model is configured; its wording may vary, but its fix is still re-checked by the compiler (up to 3 attempts).}
+
+% =============================================================== 7
+\gphead{7}{SQL Compiler}{Workspace}{a second compiler for a database language}
+\gpwhat{An editor for SQL scripts running on \textbf{NOVA-SQL}, an in-memory database built on the same ideas as the NOVA compiler.}
+\begin{aim}[Why we added it]
+SQL is declarative: you say \emph{what} you want, and the system decides \emph{how}. This page shows that decision -- the query plan before and after optimization -- so the learner sees a compiler at work on a very different language.
+\end{aim}
+\gpio{A SQL script (\ui{SQL script} editor; several statements separated by semicolons). Press \ui{Run} or \code{Ctrl+Enter}.}{\ui{Diagnostics}; list of \ui{Statements}; \emph{Plan as written}; plan after optimization with the rewrite history; expression bytecode; row counts per operator; result table.}
+\gpsteps{\item Load the example \emph{orders report} or type \code{CREATE TABLE}, \code{INSERT} and \code{SELECT} statements.
+\item Press \code{Ctrl+Enter}.
+\item Check \ui{Diagnostics}; errors give a line, a reason and a ``did you mean'' hint.
+\item Compare the plan before and after: filters move below joins, a cross join with an equality becomes a hash join, \code{ORDER BY \dots LIMIT} becomes top-N.
+\item Hover an operator to see how many rows it produced.}
+\gpex{The orders report query returns two rows: \textbf{ann 29.5 (2 orders)} and \textbf{bob 5.25 (1 order)} -- customers over 20 with total above 5, highest total first.}
+\gptip{NOVA-SQL follows SQLite's rules, including three-valued NULL logic, and has been compared against SQLite on 2\,954 random queries with no disagreement. It has no subqueries or indexes.}
+
+% =============================================================== 8
+\gphead{8}{Lexical Analysis}{Front end}{how text becomes tokens}
+\gpwhat{The first compiler phase. It reads the program as characters and groups them into tokens: keywords, names, numbers, operators and punctuation.}
+\begin{aim}[Why we added it]
+Every later phase depends on the token stream, yet it is invisible. This page makes it concrete, with a table of every token and the exact place in the source it came from.
+\end{aim}
+\gpio{The current compiled program.}{A \ui{token table} (category, lexeme, line and column) and the source with the selected token highlighted. Lexical errors (illegal character, unterminated string) are listed with positions.}
+\gpsteps{\item Compile a program.
+\item Open Lexical Analysis; the table lists all tokens in order.
+\item Click a row: the matching text is highlighted in \ui{Source}.
+\item Look at the categories -- for example \code{KEYWORD}, \code{IDENTIFIER}, \code{PUNCTUATION}.
+\item Type an illegal character such as \code{\#} in the source and recompile to see an error with its position.}
+\gpex{The first tokens of the sample program are \code{fn} (keyword, 1:1), \code{main} (identifier, 1:4), \code{(}, \code{)}, \code{\{}, \code{let}, \code{result}, \code{:}, \code{int}, \code{=}, \code{10}, \code{+}, \code{20}, \code{*}, \dots -- \textbf{45 tokens} in total.}
+\gptip{Comments and whitespace do not become tokens; that is why the count is smaller than the number of characters.}
+
+% =============================================================== 9
+\gphead{9}{Syntax Analysis}{Front end}{the LR(1) parser at work}
+\gpwhat{Shows how the parser checks the token stream against the grammar and builds a parse tree. It is the most detailed page, with several views.}
+\begin{aim}[Why we added it]
+Parsing theory (FIRST and FOLLOW sets, item sets, ACTION and GOTO tables) is abstract. Here every table is the real one used by the compiler, and the live trace shows each shift and reduce.
+\end{aim}
+\gpio{The compiled program. Optionally a state number to inspect.}{\emph{Parse trace stepper} (stack, remaining input, lookahead, stack depth, action); \emph{LR state} with its \ui{ACTION row} and \ui{GOTO row}; the grammar; \ui{FIRST and FOLLOW sets}; a \emph{concrete parse tree} you can expand.}
+\gpsteps{\item Open the \emph{trace} view and use the arrow buttons to step through parser actions.
+\item Watch the stack grow on \emph{shift} and shrink on \emph{reduce}.
+\item Open \emph{LR(1) states \& tables}; choose a state to see its items and table row.
+\item Open FIRST/FOLLOW to see which tokens can start or follow each rule.
+\item Expand the parse tree by clicking nodes.}
+\gpex{The parser is \textbf{canonical LR(1)} with \textbf{432 states}, 83 productions, 45 terminals, 35 nonterminals and \textbf{0 conflicts}. The sample program takes 149 steps: 45 shifts and 103 reduces.}
+\gptip{On a syntax error the parser reports the tokens that were expected in that state and then resynchronises, so you may see more than one error.}
+
+% =============================================================== 10
+\gphead{10}{AST Explorer}{Front end}{the program as a tree}
+\gpwhat{Draws the abstract syntax tree: the structure of the program without punctuation. Functions contain statements, statements contain expressions.}
+\begin{aim}[Why we added it]
+The tree is where operator precedence becomes visible. It is also the input to semantic analysis, so seeing it removes the mystery of how \code{10 + 20 * 2} knows to multiply first.
+\end{aim}
+\gpio{The compiled program. Click a node; collapse or expand subtrees.}{An interactive tree diagram; a \ui{Selected node} panel with the node kind and its source position; the \ui{Source} with the node's text highlighted.}
+\gpsteps{\item Compile, then open the AST Explorer.
+\item Find the function node \code{main}, then its statements.
+\item Click the expression \code{10 + 20 * 2}: the multiplication sits \emph{below} the addition.
+\item Collapse a large subtree (such as the loop body) to focus.
+\item Read the \ui{Selected node} panel for the exact line and column.}
+\gpex{The sample program yields \textbf{24 AST nodes} in one function.}
+\gptip{Each node remembers its source range; later error messages and the debugger use it to point at the exact code.}
+
+% =============================================================== 11
+\gphead{11}{Semantic Analysis}{Front end}{names, types and scopes}
+\gpwhat{Checks that a syntactically correct program also \emph{makes sense}: names are declared, types match, every path returns a value.}
+\begin{aim}[Why we added it]
+Grammar cannot catch ``use of an undeclared variable'' or ``adding a number to text''. Semantic analysis finds these errors and builds the symbol tables that later phases rely on.
+\end{aim}
+\gpio{The compiled program.}{\ui{Scope hierarchy} (global, function and block scopes); \ui{Functions} table with signatures; per-scope symbol tables (name, type, kind, declaration place); the list of \ui{Checks performed}; warnings such as unused variables.}
+\gpsteps{\item Open the page after compiling.
+\item Read the scope tree: blocks nest, and inner names may \emph{shadow} outer ones.
+\item Check the \ui{Functions} table for parameters and return types.
+\item Read \ui{Checks performed} to see which rules were applied.
+\item Declare an unused variable and recompile: a warning appears (code \code{W-SEM-001}).}
+\gpex{The sample program has \textbf{3 scopes} (global, \code{main}, loop body) and \textbf{2 symbols} (\code{result}, \code{i}), both of type \code{int}. Misspelling \code{result} as \code{reslt} gives an ``undefined variable'' error with a ``did you mean \code{result}?'' suggestion.}
+\gptip{There are no implicit conversions: \code{int} and \code{float} never mix without \code{to\_float}/\code{to\_int}.}
+
+% =============================================================== 12
+\gphead{12}{Intermediate Representation}{Middle \& back end}{three-address code}
+\gpwhat{Shows the program in the compiler's own internal language: simple instructions with at most one operation each, using temporary variables.}
+\begin{aim}[Why we added it]
+The IR is the common ground on which optimization and code generation work. Reading it, with a plain-language explanation of each line, teaches how loops and \code{if} become labels and jumps.
+\end{aim}
+\gpio{The compiled program. Click an IR row to map it to source.}{The IR per function, each instruction with an English explanation; source with the matching code highlighted; the \emph{original} and \emph{optimized} versions.}
+\gpsteps{\item Open the page; choose a function.
+\item Read the instructions: \code{t1 = 20 * 2}, \code{L1:}, \code{if\_false t3 goto L2}.
+\item Click a row to see which source code produced it.
+\item Compare with the optimized IR.
+\item Note that temporaries (\code{t1}, \code{t2}\dots) are compiler-made names.}
+\gpex{Original IR of the sample program (14 lines):\\\code{t1 = 20 * 2;\ t2 = 10 + t1;\ result = t2;\ i = 0;\ L1:;\ t3 = i < 3;\ if\_false t3 goto L2;\ t4 = result + i;\ print t4;\ t5 = i + 1;\ i = t5;\ goto L1;\ L2:;\ return}\\ The explanation of the first line reads: ``Compute 20 * 2 and store the result in t1 (a compiler temporary).''}
+\gptip{A \code{while} loop is a label at the top, a conditional jump out, and a jump back -- exactly the structure that page 13 draws as a graph.}
+
+% =============================================================== 13
+\gphead{13}{CFG \& Data-flow}{Middle \& back end}{blocks, loops, liveness and SSA}
+\gpwhat{Analyses the IR as a graph of \emph{basic blocks} and computes what the optimizer needs to know: which variables are still needed, which assignments reach which uses, and an SSA form.}
+\begin{aim}[Why we added it]
+Safe optimization requires facts about the whole program, not single lines. This page shows those facts and lets you step through the iterations of the algorithms that compute them.
+\end{aim}
+\gpio{The compiled program. Use the iteration arrows in the analysis views.}{A graph of \ui{Basic blocks and edges} with the loop header and its dashed back edge; \emph{Live-variable analysis} per block and iteration; \emph{Reaching definitions} with definition ids; \emph{SSA}: original IR and SSA IR side by side with $\varphi$ nodes.}
+\gpsteps{\item Open the graph: boxes are blocks, arrows are jumps.
+\item Spot the loop: a back edge returns to the loop header.
+\item Open \emph{Liveness} and press the arrows to watch the sets converge to a fixed point.
+\item Open \emph{Reaching definitions} to see which assignment can reach each use.
+\item Open \emph{SSA} to see where $\varphi$ nodes merge values.}
+\gpex{For the sample loop, variable \code{i} is defined before the loop and redefined inside it, so SSA gives it a $\varphi$ node at the loop header that chooses between the initial value and the incremented one.}
+\gptip{Pruned SSA adds $\varphi$ nodes only where the variable is live, which keeps the form small.}
+
+% =============================================================== 14
+\gphead{14}{Optimization Lab}{Middle \& back end}{switch passes on and off and measure the effect}
+\gpwhat{A laboratory for the optimizer's seven passes: inlining, constant/copy propagation, constant folding, algebraic simplification, common subexpression elimination, unreachable-code removal and dead-code elimination.}
+\begin{aim}[Why we added it]
+Optimization is the heart of a compiler's value, but ``it is faster'' is just a claim. The lab measures instructions, bytecode size and executed steps, \emph{and proves the output is unchanged}.
+\end{aim}
+\gpio{Toggle each pass on or off (\ui{Optimization passes}). The program comes from the Playground.}{Metrics: \ui{IR instructions}, \ui{Bytecode size}, \ui{VM instructions run}, \ui{Transformations}, \ui{Semantics} (identical or not); program output before and after; \ui{Pass impact} table; a red/green diff of \ui{Original vs optimized IR}; the reason for each rewrite.}
+\gpsteps{\item Load \emph{Optimization showcase} in the Playground and compile.
+\item Open the lab; all passes are on. Read the metrics.
+\item Switch passes off one at a time and watch the numbers change.
+\item Read the reason attached to a rewrite, for example ``folded \code{20 * 2} to 40''.
+\item Check that \ui{Semantics} stays \emph{identical} and the output is the same before and after.}
+\gpex{On the showcase program the IR shrinks from \textbf{24 to 4} instructions and executed VM steps from \textbf{65 to 9}. On the sample program IR goes from 14 to 11 with 8 transformations in 5 rounds.}
+\gptip{The optimizer never removes an integer division that could trap, and never folds one with a zero divisor -- so a crash stays a crash.}
+
+% =============================================================== 15
+\gphead{15}{Target Code (VM)}{Middle \& back end}{bytecode for the virtual machine}
+\gpwhat{Shows the stack-machine bytecode generated for your program, and how each instruction maps back to a source line.}
+\begin{aim}[Why we added it]
+Code generation is the last step before execution. Seeing the bytecode, and how often each instruction occurs, explains what the virtual machine really runs and why optimization reduces work.
+\end{aim}
+\gpio{The compiled program.}{The \emph{bytecode listing} with addresses and comments; the \ui{Source $\leftrightarrow$ bytecode mapping}; an \ui{Instruction mix} chart. The VM has 34 instructions.}
+\gpsteps{\item Open the page after compiling.
+\item Read the listing: address 0 is \code{CALL main}, address 1 is \code{HALT}.
+\item Click a source line to highlight its instructions, or the reverse.
+\item Study the \ui{Instruction mix}: loads, stores and arithmetic dominate.
+\item Compare with the unoptimized bytecode.}
+\gpex{The sample program compiles to \textbf{24 instructions} (34 without optimization). The loop body is \code{PUSH 50, LOAD 0, ADD, STORE 2, LOAD 2, PRINT, \dots, JMP 4} -- the constant \code{50} was computed at compile time.}
+\gptip{The VM keeps a separate operand stack and locals per call frame, which is why \code{CALL} and \code{RET} appear in recursive programs.}
+
+% =============================================================== 16
+\gphead{16}{Native x86-64}{Middle \& back end}{real machine code with register allocation}
+\gpwhat{Shows the assembly for a real 64-bit Intel/AMD processor, generated from the same IR, and compares it with and without the register allocator.}
+\begin{aim}[Why we added it]
+A virtual machine hides the hardware. The native backend shows what a production compiler does: assign variables to CPU registers, spill to the stack when needed, and call a small runtime for traps, strings and arrays.
+\end{aim}
+\gpio{The compiled program.}{Assembly text; metrics \ui{Instructions}, \ui{Stack-memory operands} (lower is better), \ui{Memory traffic removed}, \ui{Callee-saved register uses}; a chart comparing allocation on and off.}
+\gpsteps{\item Compile a program and open the page.
+\item Read the assembly. Look for registers like \code{\%r15} holding \code{i}.
+\item Read the metrics to see how many memory operands the allocator removed.
+\item Compare with allocation switched off.
+\item Optionally build and run native code locally with \code{scripts/nova-native.sh}.}
+\gpex{In the sample program the folded constant appears as \code{movabsq \$50, \%rax} followed by \code{addq \%r15, \%rax}: the loop variable lives in register \code{\%r15}, not in memory. For one larger sample, register allocation cut stack-memory operands from 98 to \textbf{53} (46\,\%).}
+\gptip{On the hosted demo the assembly is shown, but linking and running native code needs gcc, which is not installed there.}
+
+% =============================================================== 17
+\gphead{17}{Debugger}{Runtime}{step through execution, forwards and backwards}
+\gpwhat{A full debugger for the virtual machine: breakpoints, stepping in, over and back, a watch list, the call stack and the operand stack.}
+\begin{aim}[Why we added it]
+Bugs are understood by watching state change. Because the VM records a snapshot before every instruction, the debugger can go \emph{backwards} exactly -- something ordinary debuggers cannot do.
+\end{aim}
+\gpio{A compiled program; press \ui{Start} (or \ui{Compile first}). Click the editor gutter to set breakpoints.}{\ui{Current instruction}; variables in the active frame; \ui{Call stack}; \ui{Operand stack}; \ui{Program output}; history of recent steps.}
+\gpsteps{\item Compile, then open the Debugger and press \ui{Start}.
+\item Click a line number next to a \code{print} to set a breakpoint.
+\item Press \ui{Continue} (F5) to run to the breakpoint.
+\item Use \ui{Step into} (F11), \ui{Step over} (F10) or a single instruction (Shift+F11).
+\item Press the \ui{Step back} button to undo a step, and \ui{Reset} to start again.}
+\gpex{The sample program executes \textbf{68 VM steps} and prints 50, 51, 52. With a breakpoint on \code{print}, three \ui{Continue} presses show \code{i} going 0, 1, 2 while the output panel gains 50, 51 and 52 one line at a time.}
+\gptip{Very long runs are capped (and flagged as truncated). On the hosted demo a session lives in server memory; if it reports ``expired'', press \ui{Start} again.}
+
+% =============================================================== 18
+\gphead{18}{Runtime Memory}{Runtime}{call frames, locals and the operand stack}
+\gpwhat{A picture of the virtual machine's memory while a program runs: which function frames exist, the value of every local slot, and the operand stack.}
+\begin{aim}[Why we added it]
+``Where do local variables live?'' and ``what happens on a recursive call?'' are classic exam questions. This page answers them with the real machine state, step by step.
+\end{aim}
+\gpio{A running debug session: press \ui{Start}, then \ui{Step}, \ui{Back} or \ui{Continue}; or open the Debugger.}{The \ui{Instruction pointer} and the \emph{previous instruction}; \ui{Local slots}; \ui{Operand stack}; \emph{Frame lifecycle events} (call and return); program output.}
+\gpsteps{\item Press \ui{Start} to create a session.
+\item Press \ui{Step} repeatedly and watch the operand stack grow on \code{PUSH}/\code{LOAD} and shrink on arithmetic.
+\item Load the recursive factorial example and step into a call: a new frame appears.
+\item Watch frames disappear on \code{RET}; the events list records each call and return.
+\item Press \ui{Back} to undo a step.}
+\gpex{Recursion: \code{fact(3)} creates frames for \code{fact(3)}, \code{fact(2)} and \code{fact(1)}, then returns through them, multiplying as it goes; the recursion depth is limited to 512 frames before a ``stack overflow'' error.}
+\gptip{Slots are frame-relative numbers, not machine addresses. Arrays and strings live on a separate heap, not in the frame.}
+
+% =============================================================== 19
+\gphead{19}{Compiler Tests}{Project}{run the real test suites and fuzzers}
+\gpwhat{Runs the compiler's own test programs from the browser and shows the counts that actually just ran.}
+\begin{aim}[Why we added it]
+Trust in a compiler comes from testing. The page runs the C++ unit tests and a \emph{differential fuzzer}: random programs are executed by a reference interpreter, by the VM and by the optimized VM, and all three must agree.
+\end{aim}
+\gpio{The number of random programs to generate (and a seed). Press \ui{Run all tests}.}{Tiles \ui{C++ unit tests}, \ui{Random programs}, \ui{IR size reduction}, \ui{VM steps reduction}; \ui{Unit tests by suite}; the \emph{differential testing} table.}
+\gpsteps{\item Open the page: it starts with \emph{No test run yet}.
+\item Choose the number of random programs (for example 200).
+\item Press \ui{Run all tests} and wait a few seconds.
+\item Read pass/fail counts; every suite should be green.
+\item Return to the Dashboard: the last run is recorded there.}
+\gpex{In the project's last full run, 184 C++ unit tests passed and \textbf{2\,000 of 2\,000} random programs matched on all three engines; the optimizer cut IR size by \textbf{64\,\%} and VM steps by \textbf{60\,\%}.}
+\gptip{On the free hosted demo the unit-test part reports that the test binary is not installed; run the page on a local build (\code{./scripts/dev.sh}) to see the full result.}
+
+% =============================================================== 20
+\gphead{20}{Documentation}{Project}{the quick reference inside the platform}
+\gpwhat{A compact reference that lives next to the tools. It summarises the language, the grammar, the instruction set and the service endpoints.}
+\begin{aim}[Why we added it]
+When you are looking at a token table or a bytecode listing you should not have to leave the page to look up what a construct means. The reference is generated from the compiler where possible, so it cannot drift from the real behaviour.
+\end{aim}
+\gpio{Nothing; scroll or use the sections.}{\ui{NOVA at a glance} (statements, operators, functions, scopes, comments); \ui{Known limitations}; the \ui{context-free grammar} as loaded by the LR(1) generator; the \ui{VM instruction set}; the \ui{endpoints} list; \ui{How the pieces fit}.}
+\gpsteps{\item Open the page and read \emph{NOVA at a glance} for the language rules.
+\item Look up the grammar rule behind any syntax error.
+\item Check an opcode in the instruction set table.
+\item Read \emph{Known limitations} for honest boundaries.
+\item See the endpoint list if you want to call the API yourself.}
+\gpex{Operator precedence, highest first: unary \code{-} \code{!}; \code{* / \%}; \code{+ -}; \code{< <= > >=}; \code{== !=}; \code{\&\&}; \code{||}. The reference lists the 34 VM opcodes and the 28 API endpoints.}
+\gptip{The full specifications live in the repository's \code{docs/} folder and in the 114-page technical report.}
+\end{document}

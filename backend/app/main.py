@@ -284,7 +284,7 @@ def explorer_c(req: ExplorerCRequest):
 @app.post("/api/explain")
 def explain(req: ExplainRequest):
     if not llm.available():
-        return {"available": False, "explanation": None, "note": "Set ANTHROPIC_API_KEY to enable optional plain-language explanations. The compiler diagnostics themselves never depend on it."}
+        return {"available": False, "explanation": None, "note": "Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY to enable optional plain-language explanations. The compiler diagnostics themselves never depend on it."}
     try:
         return {"available": True, "explanation": llm.explain(req.source, req.diagnostic)}
     except Exception as exc:  # network / API failure must not affect compilation
@@ -319,7 +319,7 @@ def run_sql(req: SqlRequest):
 
 def _ai_call(fn, req: SourceRequest):
     if not llm.available():
-        return {"available": False, "note": "Set ANTHROPIC_API_KEY to enable AI assistance. The compiler works without it."}
+        return {"available": False, "note": "Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY to enable AI assistance. The compiler works without it."}
     try:
         return {"available": True, **fn(req.source)}
     except cc.CompilerError:

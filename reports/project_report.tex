@@ -1,0 +1,592 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{nova}
+\renewcommand{\runtitle}{NOVA Compiler Engineering Platform -- Project Report}
+\title{NOVA Project Report}\author{Jaswinder Singh}
+\hypersetup{pdftitle={NOVA Compiler Engineering Platform - Project Report},pdfauthor={Jaswinder Singh (12340970)}}
+\begin{document}
+% ------------------------------------------------------------------ cover
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[ink] (current page.south west) rectangle (current page.north east);
+  \fill[indigo] ([yshift=-9.5cm]current page.north west) -- ([yshift=-6.5cm]current page.north east) -- (current page.north east) -- (current page.north west) -- cycle;
+  \fill[teal,opacity=.9] ([yshift=-9.5cm]current page.north west) -- ([yshift=-10.1cm]current page.north west) -- ([yshift=-7.1cm]current page.north east) -- ([yshift=-6.5cm]current page.north east) -- cycle;
+  \foreach \i/\x in {0/2,1/4.2,2/6.4,3/8.6,4/10.8,5/13,6/15.2}{\fill[white,opacity=.10] ([xshift=\x cm,yshift=-1.6cm]current page.north west) circle (.12);}
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Huge,align=left] at ([xshift=2.2cm,yshift=-3.2cm]current page.north west) {NOVA};
+  \node[anchor=north west,text=white,font=\sffamily\large,align=left] at ([xshift=2.2cm,yshift=-4.6cm]current page.north west) {Compiler Engineering Platform};
+  \node[anchor=north west,text=white!85,font=\sffamily,align=left] at ([xshift=2.2cm,yshift=-5.6cm]current page.north west) {Two compilers $\cdot$ one native back end $\cdot$ one interactive studio};
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large,align=left,text width=15cm] at ([xshift=2.2cm,yshift=-12.2cm]current page.north west) {Project Report};
+  \node[anchor=north west,text=white!85,font=\sffamily,align=left,text width=15cm] at ([xshift=2.2cm,yshift=-13.3cm]current page.north west) {A complete account of the design, algorithms, implementation,\\verification and deployment of the project.};
+  \draw[teal,line width=2pt] ([xshift=2.2cm,yshift=-17.6cm]current page.north west) -- ++(3cm,0);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\large,align=left] at ([xshift=2.2cm,yshift=-18cm]current page.north west) {Jaswinder Singh};
+  \node[anchor=north west,text=white!85,font=\sffamily,align=left] at ([xshift=2.2cm,yshift=-19cm]current page.north west) {Student ID: 12340970\\Course: Compiler Design\\November 2026};
+  \node[anchor=south west,text=white!60,font=\sffamily\small] at ([xshift=2.2cm,yshift=1.4cm]current page.south west) {Live demo: nova-compiler-psi.vercel.app};
+\end{tikzpicture}
+\newpage
+\pagenumbering{roman}
+\setcounter{tocdepth}{1}
+\tableofcontents
+\newpage
+\pagenumbering{arabic}
+% ------------------------------------------------------------------ abstract
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+Compilers are usually taught from static diagrams, while the real data of a compiler -- token streams, parser tables, intermediate code, optimizer decisions, virtual-machine state -- stays invisible. \nova{} closes this gap. It is a complete, working toolchain made of \textbf{two compilers}: \nova{} (a statically typed language with integers, floats, booleans, strings and arrays) and \textbf{NOVA-SQL} (a SQL engine); one \textbf{native x86-64 back end}; and an interactive web \textbf{studio} of 20 pages that visualises \emph{real compiler output} instead of mock-ups.
+
+The implementation is about \textbf{16\,000 lines} of C++17, C, Python and TypeScript. Its correctness is not asserted but \textbf{measured against independent oracles}: a reference interpreter, native machine code and SQLite. A total of \textbf{289 automated tests} and several fuzzers run on every change, and the project is deployed on the web.
+
+\begin{tcolorbox}[enhanced,colback=mist,colframe=white,boxrule=0pt,left=8pt,right=8pt]
+\centering\sffamily
+\begin{tabularx}{\linewidth}{*{4}{>{\centering\arraybackslash}X}}
+{\Huge\bfseries\color{indigo}432}&{\Huge\bfseries\color{teal}7}&{\Huge\bfseries\color{indigo}289}&{\Huge\bfseries\color{teal}12$\times$}\\[-2pt]
+\small LR(1) states, 0 conflicts&\small optimization passes&\small automated tests&\small faster than CPython (native)
+\end{tabularx}
+\end{tcolorbox}
+
+% ------------------------------------------------------------------ 1
+\section{Introduction}
+\subsection{Problem statement}
+Learning compiler design is hard because each phase hides its work. A student sees source code go in and a result come out, but not the token stream, the 432-state parser automaton, the dominator tree, or the reason an optimizer removed an instruction. Tools that do show internals are usually separate, single-phase demos that are not tied to one real compiler.
+
+\subsection{Objectives}
+\begin{itemize}
+\item Build a \textbf{real compiler} for a typed language, with every classical phase implemented from scratch (no parser generators, no LLVM).
+\item Expose \textbf{every phase} through a browser studio that shows the compiler's own data, never a simulation.
+\item \textbf{Prove correctness} by differential testing against independent implementations.
+\item Generate \textbf{native machine code}, and measure what the optimizer and register allocator really buy.
+\item Apply the same ideas to a second, declarative language (SQL).
+\item Ship it: reproducible build, CI, containers, and a public deployment.
+\end{itemize}
+
+\subsection{Scope at a glance}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\sffamily\color{indigo}}l X@{}}\toprule
+NOVA front end & Hand-written lexer, canonical LR(1) generator and parser, typed AST, scoped semantic analysis\\
+NOVA middle end & Three-address IR, CFG, dominators, liveness, reaching definitions, pruned SSA, 7 optimizer passes\\
+NOVA back end & Stack bytecode VM with time-travel debugger; native x86-64 with linear-scan register allocation\\
+NOVA-SQL & Lexer, parser, binder, logical plan, rule-based optimizer, bytecode VM, executor\\
+Assistant & Compiler-verified fixes, runtime root-cause analysis, optional LLM help\\
+Platform & FastAPI service with sandboxed execution, language server (LSP), React studio, CI, Docker\\\bottomrule
+\end{tabularx}
+\end{center}
+
+% ------------------------------------------------------------------ 2
+\section{System architecture}
+The system has three layers. The \textbf{C++ core} is the only place where compilation happens. The \textbf{Python service} wraps it in a JSON API and runs it in a sandbox. The \textbf{React studio} only draws what the API returns.
+
+\begin{center}
+\begin{tikzpicture}[font=\sffamily\small,node distance=5mm and 7mm,
+ box/.style={draw=indigo,fill=mist,rounded corners=2pt,minimum height=7mm,minimum width=20mm,align=center},
+ hot/.style={box,fill=teal!14,draw=teal!70!black},arr/.style={-{Stealth[length=2mm]},draw=slate}]
+\node[box] (src) {NOVA\\source};
+\node[box,right=of src] (lex) {Lexer};
+\node[hot,right=of lex] (lr) {LR(1)\\parser};
+\node[box,right=of lr] (sem) {Semantic\\analysis};
+\node[box,below=8mm of sem] (ir) {3-address\\IR};
+\node[hot,left=of ir] (opt) {Optimizer\\+ SSA};
+\node[box,left=of opt] (bc) {Bytecode};
+\node[box,below=8mm of bc] (vm) {VM +\\debugger};
+\node[hot,below=8mm of opt] (x86) {x86-64\\native};
+\node[box,below=8mm of ir] (rt) {C runtime\\(traps)};
+\foreach \a/\b in {src/lex,lex/lr,lr/sem}{\draw[arr](\a)--(\b);}
+\draw[arr](sem)--(ir);\draw[arr](ir)--(opt);\draw[arr](opt)--(bc);\draw[arr](bc)--(vm);\draw[arr](opt)--(x86);\draw[arr](x86)--(rt);
+\end{tikzpicture}\\[2pt]{\small\color{slate}Figure 1 -- The NOVA pipeline. Highlighted stages are the algorithmically richest.}
+\end{center}
+
+\begin{center}
+\begin{tikzpicture}[font=\sffamily\small,
+ layer/.style={draw=indigo,fill=mist,rounded corners=3pt,minimum height=9mm,text width=14.5cm,align=center},arr/.style={-{Stealth},draw=slate}]
+\node[layer,fill=violet!15] (a) {\textbf{React + TypeScript studio} -- 20 pages, Monaco editor, React Flow graphs};
+\node[layer,below=6mm of a,fill=teal!12] (b) {\textbf{FastAPI service} -- 28 endpoints, sandboxed subprocesses, debug sessions, LSP, AI assistant};
+\node[layer,below=6mm of b,fill=indigo!12] (c) {\textbf{C++17 core} (\texttt{novac}) -- NOVA compiler, NOVA-SQL, VM, x86-64 generator, fuzzers};
+\draw[arr](a)--node[right]{\scriptsize JSON over HTTP}(b);\draw[arr](b)--node[right]{\scriptsize argv + stdin/stdout JSON}(c);
+\end{tikzpicture}\\[2pt]{\small\color{slate}Figure 2 -- Layers of the platform.}
+\end{center}
+
+\begin{aim}[Why this split?]
+Keeping all intelligence in one C++ binary means the CLI, the API, the language server and the website are guaranteed to agree. The website cannot ``fake'' a result because it has no compiler logic of its own.
+\end{aim}
+
+% ------------------------------------------------------------------ 3
+\section{The NOVA language}
+NOVA is a small, statically typed, imperative language with an unambiguous grammar (mandatory braces, so there is no dangling \code{else}).
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}\toprule
+\textbf{Feature} & \textbf{Rule}\\\midrule
+Types & \code{int} (signed 64-bit, wrapping), \code{float} (IEEE double), \code{bool}, immutable \code{string}, heap arrays \code{int[]}\\
+Conversions & None implicit; only \code{to\_float} and \code{to\_int}\\
+Declarations & \code{let x: T = e;} always initialised; blocks open scopes; inner names may shadow\\
+Control flow & \code{if}/\code{else if}/\code{else}, \code{while}, \code{return}, short-circuit \code{\&\&} \code{||}\\
+Functions & \code{fn f(a: int) -> int}, recursion, any declaration order; execution starts at \code{main}\\
+Arrays \& strings & literals, \code{new int[n]}, indexing, \code{len}, string \code{+}, \code{==}\\
+Runtime traps & division by zero, stack overflow (512 frames), step limit, index out of bounds, negative array size\\\bottomrule
+\end{tabularx}
+\end{center}
+\begin{lstlisting}
+fn sq(x: int) -> int { return x * x; }
+fn hyp(a: int, b: int) -> int { return sq(a) + sq(b); }
+fn main() { print(hyp(3, 4)); }   // 25: both calls inlined, then folded
+\end{lstlisting}
+\textbf{Diagnostics.} Every error carries a phase, a code from a catalogue of 54 (8 lexical, 6 syntax, 17 semantic, 2 warnings, 20 SQL, 1 internal), an exact source range, an explanation and a suggestion (``did you mean \dots'' using edit distance). Warnings cover unused variables and unreachable statements. The repository ships 18 example programs: 10 valid, 5 with compile errors and 3 with runtime errors.
+
+% ------------------------------------------------------------------ 4
+\section{Front end}
+\subsection{Lexical analysis}
+A hand-written scanner with longest-match, line/column tracking and string literals. It produces the token table that the studio's \emph{Lexical Analysis} page shows, and reports illegal characters and unterminated strings with exact positions.
+
+\subsection{Canonical LR(1) parsing}
+Rather than use a generator, the project \emph{implements} the generator. It computes FIRST sets by fixed point, builds item-set closures and goto transitions, constructs the canonical collection and fills the ACTION and GOTO tables with conflict detection.
+\begin{center}\small\sffamily
+\begin{tabular}{@{}rrrrrrr@{}}\toprule
+States&Productions&Terminals&Nonterminals&ACTION shift&ACTION reduce&Conflicts\\\midrule
+\textbf{432}&83&45&35&1555&2374&\textbf{0}\\\bottomrule
+\end{tabular}
+\end{center}
+The table is built in about 10 ms at start-up. The driver is a shift/reduce loop; \textbf{panic-mode error recovery} resynchronises after a syntax error so that several errors can be reported per run. The error message is derived from the set of terminals that have an ACTION entry in the failing state, which is why messages such as ``expected \code{;} after expression'' are precise.
+
+\subsection{AST and semantic analysis}
+Parse trees are reduced to a typed AST class hierarchy with source spans. Semantic analysis uses a \textbf{scope tree with symbol tables}, bottom-up type inference, an all-paths-return check, and Levenshtein-based suggestions. Typing is strict: arithmetic needs equal numeric types, conditions must be \code{bool}, and calling a void function as a value is an error.
+
+\subsection{How the LR(1) generator works}
+\begin{inout}{Algorithm sketch -- building the canonical collection}
+\begin{enumerate}[label=\textbf{\arabic*.},itemsep=1pt]
+\item Compute \textbf{FIRST} and \textbf{FOLLOW} for all 35 nonterminals by iterating to a fixed point.
+\item Start from the item $[S' \to \cdot\, S,\ \$]$. The \textbf{closure} of an item set adds $[B \to \cdot\,\gamma,\ b]$ for every $B$ that follows a dot and every $b \in \mathrm{FIRST}(\beta a)$.
+\item For each grammar symbol $X$, \textbf{goto}$(I,X)$ moves the dot over $X$ and closes the result. New item sets are added until none appear (432 states).
+\item Fill \textbf{ACTION}: shift on a terminal after the dot, reduce on the lookahead of a completed item, accept on $[S'\to S\cdot,\$]$. A cell written twice is reported as a conflict (there are none).
+\item At run time a stack of states and a lookahead token drive the table; every step is recorded so the studio can replay it.
+\end{enumerate}
+\end{inout}
+\begin{aim}[Why canonical LR(1) and not LALR?]
+Canonical LR(1) is the most powerful of the classical methods and keeps every distinction between lookaheads, so conflicts cannot be introduced by state merging. The cost is a larger table (432 states) -- which is perfectly acceptable for this language, and shows students the real trade-off.
+\end{aim}
+
+% ------------------------------------------------------------------ 5
+\section{Middle end}
+\subsection{Three-address IR}
+The AST is lowered to a 3-address instruction list; short-circuit operators become explicit jumps. Each IR instruction keeps its source position, which is how the studio maps IR rows back to source.
+
+\subsection{Control-flow and data-flow analysis}
+\begin{itemize}
+\item \textbf{CFG}: basic blocks from leaders, successor lists, reachability.
+\item \textbf{Dominators and natural loops}: loop headers and back edges are found and drawn.
+\item \textbf{Live-variable analysis}: iterative backward fixed point, steppable in the studio.
+\item \textbf{Reaching definitions}: forward fixed point over definition ids.
+\item \textbf{Pruned SSA}: $\varphi$ nodes only where a variable is live at a merge.
+\end{itemize}
+
+\subsection{Optimizer}
+Seven switchable passes run to a fixed point (at most 12 rounds), each recording a before/after pair and a reason for every rewrite.
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}c l X@{}}\toprule
+\# & Pass & What it does\\\midrule
+1 & Inlining & Interprocedural; call-graph recursion check and size limits, up to 3 rounds\\
+2 & Constant/copy propagation & Block-local plus function-wide for single-assignment variables\\
+3 & Constant folding & Same arithmetic as the VM; folds constant branches; never folds a possible trap\\
+4 & Algebraic simplification & $x{+}0$, $x{\cdot}1$, strength reduction $x{\cdot}2\to x{+}x$; IEEE-safe float rules only\\
+5 & Common subexpression elimination & Local value numbering with commutative normalisation\\
+6 & Unreachable-code elimination & CFG reachability, removes jumps to the next instruction\\
+7 & Dead-code elimination & Backward liveness; calls, prints and possibly-trapping division are kept\\\bottomrule
+\end{tabularx}
+\end{center}
+\begin{aim}[Soundness decisions]
+Integer division is never folded or deleted if it can trap; float identities are limited to IEEE-safe ones; CSE entries die on reassignment. A bug found by the fuzzer while writing inlining (duplicate variable names across rounds) was fixed by making the site counter global.
+\end{aim}
+\textbf{Effect.} On the optimization showcase program, IR drops from \textbf{24 to 4} instructions and VM steps from \textbf{65 to 9}. Over 2\,000 random programs IR size falls \textbf{64\%} and VM steps \textbf{60\%}, with identical output.
+
+\subsection{The analyses in detail}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}\toprule
+\textbf{Analysis}&\textbf{Definition used}\\\midrule
+Dominators&$\mathrm{Dom}(n)=\{n\}\cup\bigcap_{p\in\mathrm{pred}(n)}\mathrm{Dom}(p)$, iterated to a fixed point; a back edge $n\to h$ with $h\in\mathrm{Dom}(n)$ marks a natural loop\\
+Live variables (backward)&$\mathrm{out}(B)=\bigcup_{S\in\mathrm{succ}(B)}\mathrm{in}(S)$, $\ \mathrm{in}(B)=\mathrm{use}(B)\cup(\mathrm{out}(B)\setminus\mathrm{def}(B))$\\
+Reaching definitions (forward)&$\mathrm{in}(B)=\bigcup_{P}\mathrm{out}(P)$, $\ \mathrm{out}(B)=\mathrm{gen}(B)\cup(\mathrm{in}(B)\setminus\mathrm{kill}(B))$\\
+Pruned SSA&Place $\varphi$ at iterated dominance frontiers, but only for variables live-in at the join; rename with a dominator-tree walk\\\bottomrule
+\end{tabularx}
+\end{center}
+For the loop program in the next chapter, liveness converges in 3 iterations and SSA places 2 $\varphi$ nodes.
+
+% ------------------------------------------------------------------ 6
+\section{Back ends}
+\subsection{Bytecode VM and time-travel debugger}
+A tagged-value stack machine with \textbf{34 opcodes}, per-call frames (locals plus an operand stack), label back-patching, and a verifier that checks stack discipline. Limits protect the host: 512 call frames, a step limit, and bounded output. The debugger runs the program once with snapshot recording; every step, back-step and breakpoint just moves a cursor over \emph{real} VM states, so reverse execution is exact.
+
+\subsection{The 34-instruction set}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\sffamily\color{indigo}}l >{\ttfamily}l X@{}}\toprule
+Group&Opcodes&Effect\\\midrule
+Stack \& constants&PUSH POP PUSHS&push a constant or string literal; discard\\
+Locals&LOAD STORE&read / write a frame slot\\
+Arithmetic&ADD SUB MUL DIV MOD NEG&int and float; integer \code{DIV}/\code{MOD} trap on zero\\
+Comparison \& logic&LT LE GT GE EQ NE NOT&push a bool\\
+Conversion&I2F F2I&\code{to\_float}, \code{to\_int}\\
+Control flow&JMP JZ JNZ CALL RET RETV HALT&jumps, calls with a new frame, returns\\
+Output&PRINT&write a value on its own line\\
+Arrays&NEWARR ALOAD ASTORE ALEN&allocate, read, write (bounds-checked), length\\
+Strings&SCAT SEQ&concatenate; compare for equality\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Native x86-64}
+The IR is compiled to System~V x86-64 assembly with a \textbf{linear-scan register allocator}, heap arrays and strings through a small C runtime, and runtime traps that produce the same error text as the VM. gcc assembles and links the result.
+\begin{center}\small\sffamily
+\begin{tabular}{@{}lrr@{}}\toprule
+Sample program&With allocator&Without\\\midrule
+Instructions&203&172\\Stack-memory operands&\textbf{53}&98\\\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Linear-scan allocation.} Live ranges come from the liveness analysis. Intervals are sorted by start point; a register is assigned if one is free, otherwise the interval that ends last is spilled to the stack. Caller- and callee-saved registers are respected (callee-saved uses are counted and shown in the studio). Arrays and strings live on a heap managed by the 66-line C runtime, which also implements the traps.
+
+Register allocation removes 46\,\% of memory operands. The honest finding is that it does not always speed programs up: on the prime sieve it gains nothing because the loop is bound by the \code{idiv} instruction.
+
+% ------------------------------------------------------------------ worked example
+\section{Worked example: one program, every phase}
+The program below is compiled by the real \code{novac}; every figure in this chapter was produced by it.
+\begin{lstlisting}
+fn main() {
+    let result: int = 10 + 20 * 2;
+    let i: int = 0;
+    while (i < 3) { print(result + i); i = i + 1; }
+}
+\end{lstlisting}
+\begin{center}\small\sffamily
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}l r X@{}}\toprule
+Phase&Result&What happened\\\midrule
+Lexing&45 tokens&\code{fn main ( ) \{ let result : int = 10 + 20 * \dots}\\
+Parsing&149 steps&45 shifts, 103 reduces, maximum stack depth 20; precedence put \code{20 * 2} below \code{+}\\
+AST&24 nodes&1 function\\
+Semantic&3 scopes, 2 symbols&0 errors\\
+IR&14 instructions&three-address code, below\\
+Optimizer&14 $\to$ 11&8 transformations in 5 rounds\\
+Bytecode&24 instructions&34 without optimization\\
+Execution&\code{50 51 52}&identical to the reference interpreter\\\bottomrule
+\end{tabularx}
+\end{center}
+\begin{minipage}[t]{.48\linewidth}
+\textbf{IR before optimization}
+\begin{lstlisting}[language={}]
+t1 = 20 * 2
+t2 = 10 + t1
+result = t2
+i = 0
+L1:
+t3 = i < 3
+if_false t3 goto L2
+t4 = result + i
+print t4
+t5 = i + 1
+i = t5
+goto L1
+L2:
+return
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{.48\linewidth}
+\textbf{IR after optimization}
+\begin{lstlisting}[language={}]
+i = 0
+L1:
+t3 = i < 3
+if_false t3 goto L2
+t4 = 50 + i
+print t4
+t5 = i + 1
+i = t5
+goto L1
+L2:
+return
+\end{lstlisting}
+\end{minipage}
+\begin{aim}[What the optimizer did]
+\code{20 * 2} was folded to 40, \code{10 + 40} to 50, \code{result} was recognised as the constant 50 and propagated into the loop, and the now-dead temporaries and the \code{result} variable were removed by liveness-based dead-code elimination.
+\end{aim}
+\textbf{Generated bytecode} (excerpt): \code{PUSH 0, STORE 0, LOAD 0, PUSH 3, LT, STORE 1, LOAD 1, JZ 23, PUSH 50, LOAD 0, ADD, \dots, JMP 4, RETV}. Address 0 is always \code{CALL main} and address 1 \code{HALT}.
+
+% ------------------------------------------------------------------ 7
+\section{NOVA-SQL}
+A second compiler for a declarative language, with its own front end but shared diagnostics.
+\begin{center}
+\begin{tikzpicture}[font=\sffamily\scriptsize,node distance=3mm,box/.style={draw=indigo,fill=mist,rounded corners=2pt,minimum height=6.5mm,align=center,inner sep=3pt},arr/.style={-{Stealth[length=1.6mm]},draw=slate}]
+\node[box](a){SQL\\script};\node[box,right=of a](b){Lexer +\\parser};\node[box,right=of b](c){Binder\\(types, NULLs)};\node[box,right=of c,fill=teal!14](d){Logical plan\\+ optimizer};\node[box,right=of d](e){SQL-VM\\bytecode};\node[box,right=of e](f){Executor\\rows + stats};
+\foreach \x/\y in {a/b,b/c,c/d,d/e,e/f}{\draw[arr](\x)--(\y);}
+\end{tikzpicture}
+\end{center}
+\textbf{Supported SQL:} \code{CREATE/DROP TABLE}, \code{INSERT}, \code{UPDATE}, \code{DELETE}, and \code{SELECT} with \code{DISTINCT}, inner/left/cross joins, \code{WHERE}, \code{GROUP BY}, \code{HAVING}, \code{ORDER BY}, \code{LIMIT/OFFSET}, \code{CASE}, \code{LIKE}, \code{IN}, \code{BETWEEN}, scalar functions and the aggregates \code{COUNT SUM AVG MIN MAX}.
+
+\textbf{Three-valued logic} is implemented exactly (\code{NULL AND 0 = 0}, \code{NULL = NULL} is NULL). The rule-based optimizer performs \textbf{constant folding, predicate pushdown} (a cross join plus \code{WHERE} becomes a filtered hash join), \textbf{hash-join selection} and \textbf{top-N}; every rewrite is recorded with the plan before and after.
+
+\textbf{Verification.} A differential fuzzer generates random schemas, data and queries and compares NOVA-SQL with \textbf{SQLite}: \textbf{2\,954 of 2\,954} comparable queries agreed in the last run (46 skipped because SQLite itself rejected them). The fuzzer found a real bug during development. 1\,000 garbled scripts under sanitizers produced no crash.
+
+% ------------------------------------------------------------------ 8
+\section{Backend service}
+The FastAPI service exposes \textbf{28 endpoints}: compile, execute, optimize, six debug-session calls, assembly, SQL, suggest/autofix, AI fix/debug, tests, health, capabilities, grammar and examples.
+\begin{itemize}
+\item \textbf{Sandboxed execution.} Every external tool is run with argv only (never a shell), a wall-clock timeout with process-group kill, CPU and address-space limits, core dumps disabled, a scrubbed environment and a capped output size.
+\item \textbf{Honest capabilities.} \code{/api/capabilities} compiles a probe program and compares it with the reference interpreter, so the dashboard shows what \emph{this build} can really do.
+\item \textbf{Language server.} A stdio LSP provides diagnostics, hover, go-to-definition, find references, completion, document symbols and quick-fix code actions; a VS Code client is included. While code is mid-edit and does not type-check, the server keeps the last good symbol tables so completion still works.
+\end{itemize}
+\begin{warn}
+The sandbox limits resources but does not isolate the file system or network. The service must run in a container or VM before untrusted users reach it; the Docker image provides that.
+\end{warn}
+
+% ------------------------------------------------------------------ 9
+\section{The assistant}
+\begin{aim}[Principle]
+The compiler decides what is correct, never a model.
+\end{aim}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}l c X@{}}\toprule
+Feature&Key?&How it works\\\midrule
+Quick fixes&no&Rules turn a diagnostic into a text edit; the edit is applied and re-compiled; only fixes that remove the error without adding new ones are marked \emph{verified}\\
+Auto-fix&no&Repeats verified fixes (up to 12 steps) and returns steps plus a diff\\
+Runtime analysis&no&Runs the VM with tracing and derives the root cause of a trap from the recorded state (divisor, index, recursing function)\\
+AI fix / debug&yes&A model proposes a program; the compiler re-checks it (3 attempts, each given the new diagnostics); only compiling candidates are returned\\\bottomrule
+\end{tabularx}
+\end{center}
+The AI layer supports Anthropic and OpenRouter (free models) through one small adapter. Unavailable AI never breaks the page: it shows a message and the rule-based features continue to work.
+
+% ------------------------------------------------------------------ 10
+\section{The studio (frontend)}
+Built with React 18, TypeScript, Vite, Tailwind, Monaco and React Flow. The 20 pages are grouped in the sidebar:
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\sffamily\color{indigo}}l X@{}}\toprule
+Workspace&Dashboard, Compiler Playground, Learn Mode, Compiler Explorer, Visualisation, AI Assistant, SQL Compiler\\
+Front end&Lexical Analysis, Syntax Analysis, AST Explorer, Semantic Analysis\\
+Middle \& back end&Intermediate Representation, CFG \& Data-flow, Optimization Lab, Target Code (VM), Native x86-64\\
+Runtime&Debugger, Runtime Memory\\
+Project&Compiler Tests, Documentation\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{What each page is for}
+\begin{center}\footnotesize
+\begin{tabularx}{\linewidth}{@{}r >{\bfseries}l X@{}}\toprule
+\#&Page&Purpose\\\midrule
+1&Dashboard&Live status, probed capabilities, last pipeline numbers, last test run\\
+2&Compiler Playground&Editor, Compile/Run, seven-stage pipeline, problems and output\\
+3&Learn Mode&Stage-by-stage lesson filled with the program's own results\\
+4&Compiler Explorer&NOVA output next to the C toolchain (clang or gcc) when installed\\
+5&Visualisation&Charts: parser stack depth, VM opcodes, optimizer rounds, live ranges, SQL rows\\
+6&AI Assistant&Verified quick fixes, auto-fix, runtime root cause, optional AI fix\\
+7&SQL Compiler&NOVA-SQL scripts: plans before/after, bytecode, rows, per-operator counts\\
+8&Lexical Analysis&Token table with source highlighting\\
+9&Syntax Analysis&Parse-trace stepper, LR(1) states, ACTION/GOTO, FIRST/FOLLOW, parse tree\\
+10&AST Explorer&Collapsible tree with source mapping\\
+11&Semantic Analysis&Scope tree, symbol tables, checks performed\\
+12&Intermediate Repr.&Three-address code with an explanation per instruction\\
+13&CFG \& Data-flow&Blocks, loops, liveness, reaching definitions, SSA\\
+14&Optimization Lab&Toggle passes, diff, metrics, before/after output\\
+15&Target Code (VM)&Bytecode, source mapping, instruction mix\\
+16&Native x86-64&Assembly with register allocation on/off comparison\\
+17&Debugger&Breakpoints, step in/over/back, watch, call and operand stacks\\
+18&Runtime Memory&Frames, locals, operand stack, call/return events\\
+19&Compiler Tests&Run the real test suites and fuzzers from the browser\\
+20&Documentation&Language reference, grammar, instruction set, endpoints\\\bottomrule
+\end{tabularx}
+\end{center}
+
+Design rules: every number comes from the API; every empty state explains what to do next; the visualisation page uses one validated colour system for light and dark themes. A separate \textbf{user guide} (companion document) explains each page with its input, output and purpose.
+
+% ------------------------------------------------------------------ API
+\section{API reference}
+All endpoints are JSON; errors use one shape (\code{error}, \code{detail}) with HTTP 422 for invalid requests and 503 if the compiler binary is missing.
+\begin{center}\footnotesize
+\begin{tabularx}{\linewidth}{@{}l l X@{}}\toprule
+Method&Path&Purpose\\\midrule
+GET&\code{/api/health}&Status, compiler path, sandbox and parser facts\\
+GET&\code{/api/capabilities}&Capabilities discovered by compiling a probe program\\
+GET&\code{/api/examples}&The 18 example programs\\
+GET&\code{/api/passes}, \code{/api/isa}&Optimizer pass list; VM instruction set\\
+GET&\code{/api/grammar}, \code{/api/grammar/state/\{n\}}&Grammar, FIRST/FOLLOW; one LR(1) state with its items\\
+POST&\code{/api/compile}&Full pipeline; all stage data (tokens $\ldots$ bytecode, execution)\\
+POST&\code{/api/execute}, \code{/api/optimize}&Run on the VM; optimize with a chosen pass set\\
+POST&\code{/api/debug/start}&Record a trace and open a debug session\\
+POST&\code{/api/debug/step|continue|breakpoints|seek|reset}&Move the cursor over the recorded states\\
+POST&\code{/api/asm}&Native x86-64 assembly, allocator on/off\\
+POST&\code{/api/sql}&NOVA-SQL pipeline and results\\
+POST&\code{/api/suggest}, \code{/api/autofix}&Verified quick fixes; iterative auto-fix\\
+POST&\code{/api/explain}, \code{/api/debug/explain}&Diagnostic explanation; rule-based runtime root cause\\
+POST&\code{/api/ai/fix}, \code{/api/ai/debug}&Model-assisted fix and debugging (key required)\\
+POST&\code{/api/tests/run}; GET \code{/api/tests/last}&Run suites and fuzzers; last recorded run\\
+GET/POST&\code{/api/explorer/languages}, \code{/api/explorer/c}&Explorer languages; C toolchain output\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Example programs}
+\begin{center}\footnotesize
+\begin{tabularx}{\linewidth}{@{}l l X@{}}\toprule
+Group&File&Demonstrates\\\midrule
+Valid&01\_hello\_arithmetic&variables, expressions, if/else\\
+&02\_factorial, 03\_fibonacci&recursion, loops, call frames\\
+&04\_optimization\_demo&all optimizer passes (24 $\to$ 4 IR instructions)\\
+&05\_primes, 08\_gcd&nested loops, Euclid's algorithm\\
+&06\_floats\_and\_casts, 07\_scopes&explicit conversions, shadowing\\
+&09\_arrays, 10\_strings&heap arrays (bubble sort), strings\\\midrule
+Compile errors&e01 -- e05&undefined variable, missing semicolon, type mismatch, wrong arguments, duplicate declaration and missing return\\\midrule
+Runtime errors&r01 -- r03&division by zero, stack overflow, index out of bounds\\\midrule
+SQL&\code{examples/sql}&orders report (join, group, top-N), NULL semantics\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Technology stack}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}\toprule
+Compiler core&C++17, CMake; C for the native runtime\\
+Native tools&gcc/clang to assemble and link generated x86-64\\
+Service&Python 3.12, FastAPI, Pydantic, httpx, Uvicorn\\
+Studio&React 18, TypeScript, Vite, Tailwind CSS, Monaco, React Flow, Lucide icons\\
+Tests&CTest-style C++ runner, pytest, Vitest and Testing Library, shell and Python fuzzers\\
+Delivery&GitHub Actions, Docker, Render blueprint, Vercel\\\bottomrule
+\end{tabularx}
+\end{center}
+
+% ------------------------------------------------------------------ 11
+\section{Verification and testing}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}l r X@{}}\toprule
+Suite&Count&What it proves\\\midrule
+C++ unit tests&184&Each phase, each optimizer pass in isolation, grammar has no conflicts\\
+Backend tests&73&API contracts, sandbox limits, assistant, LSP, SQL\\
+Frontend tests&32&Pages render real API data and empty states\\
+Random-program fuzz&2\,000&Reference interpreter $\equiv$ VM $\equiv$ optimized VM; \textbf{0 mismatches}\\
+Invalid-program fuzz&1\,000&Diagnostics always well-formed; \textbf{0 crashes}\\
+Native vs VM&213&Native output identical to the VM on every example and random program\\
+SQL vs SQLite&2\,954&Random queries agree with SQLite; \textbf{0 failures}\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{How the differential testing works}
+\begin{center}
+\begin{tikzpicture}[font=\sffamily\small,box/.style={draw=indigo,fill=mist,rounded corners=2pt,minimum height=7mm,align=center},arr/.style={-{Stealth},draw=slate}]
+\node[box,fill=teal!14](g){Random program\\generator};
+\node[box,right=14mm of g,yshift=10mm](a){Reference\\interpreter};
+\node[box,right=14mm of g](b){VM\\(no optimization)};
+\node[box,right=14mm of g,yshift=-10mm](c){VM\\(optimized)};
+\node[box,right=14mm of b,fill=amber!18](cmp){Compare output\\\emph{and} error text};
+\foreach \x in {a,b,c}{\draw[arr](g)--(\x);\draw[arr](\x)--(cmp);}
+\end{tikzpicture}
+\end{center}
+The reference interpreter shares nothing with the IR, optimizer or VM except one file of arithmetic primitives, so a bug in any pipeline stage shows up as a disagreement. Pass subsets are tested too (each pass alone, and combinations). For the native back end the same programs are compiled to machine code, run, and compared with the VM output. SQL uses SQLite as the oracle. Invalid programs are produced by mutating valid ones; the requirement is that the compiler always answers with well-formed diagnostics and never crashes -- of 1\,000 mutated programs, 90 were rejected by the lexer, 618 by the parser, 112 by semantic analysis, and 180 happened to remain valid.
+
+Two further safeguards: a test that \emph{injects a bug into the optimizer} proves the checker can actually fail, and an ASan/UBSan build runs the unit tests and fuzzers with zero findings. The first run of GitHub Actions caught a real portability bug (a missing \code{\#include <algorithm>}), which is exactly why CI exists.
+
+% ------------------------------------------------------------------ 12
+\section{Performance}
+\begin{center}\small\sffamily
+\begin{tabular}{@{}lrrr@{}}\toprule
+Benchmark&Native&CPython&Speed-up\\\midrule
+\code{fib(35)}&54 ms&654 ms&\textbf{12.1$\times$}\\
+Prime sieve&33 ms&388 ms&\textbf{11.7$\times$}\\\bottomrule
+\end{tabular}
+\end{center}
+Interprocedural inlining makes a hot loop that calls small helpers \textbf{2.19$\times$} faster (103\,ms $\to$ 47\,ms) with identical output. Register allocation speeds up \code{fib(35)} by 1.37$\times$ and, as noted, does nothing for the sieve.
+
+% ------------------------------------------------------------------ 13
+\section{Build, CI and deployment}
+\begin{itemize}
+\item \textbf{Scripts}: \code{dev.sh} (build and run everything), \code{serve.sh} (single process), \code{test.sh} (all suites), \code{sanitize.sh}, \code{bench.sh}.
+\item \textbf{CI}: GitHub Actions runs the full test job and a sanitizer job on every push.
+\item \textbf{Docker}: a multi-stage \code{Dockerfile} builds the frontend, compiles the C++ core and serves everything from one container (also described by a Render blueprint).
+\item \textbf{Live deployment on Vercel}: the C++ core is compiled to a fully static Linux binary and called from a Python serverless function, with the studio served from the CDN. The optional AI features use a free OpenRouter model whose key is held as a server-side environment variable, never in the code.
+\end{itemize}
+\begin{warn}[Deployment limits]
+On the free serverless host the native back end cannot link (no gcc), the C compiler viewer has no toolchain, and the \emph{unit-test} button of the Compiler Tests page needs the test binary, which is not deployed. All other pages work; the full platform runs locally or from the Docker image.
+\end{warn}
+
+% ------------------------------------------------------------------ process
+\section{Development process}
+The project was built incrementally in 20 commits, each leaving the test suite green: the C++ pipeline and LR(1) generator first, then the API and studio, then analyses and the optimizer, SQL, the native back end, inlining, the assistant, the visualisation page and finally deployment. Practices that shaped quality:
+\begin{itemize}
+\item \textbf{Test first for risky parts}: the grammar-conflict test, fuzzers and injected-bug test were written before the optimizer passes they guard.
+\item \textbf{Measure, do not claim}: dashboards and reports read numbers from the running system; negative results (the sieve gets no speed-up from register allocation) are reported.
+\item \textbf{Fail safe}: the compiler never trusts a model; the service never trusts a program (timeouts, limits, output cap).
+\end{itemize}
+
+\section{Security considerations}
+\begin{itemize}
+\item User programs are only ever \emph{data} for the compiler; they are never executed natively on the hosted service.
+\item All subprocesses use argument vectors (no shell), a scrubbed environment, CPU and memory limits, a wall-clock kill and an output cap; source size is limited to 64\,KB.
+\item API keys are read from environment variables only and are never written to the repository or the browser.
+\item CORS origins are configurable; the studio is normally served from the same origin as the API.
+\end{itemize}
+
+\section{How to run the project}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily}l X@{}}\toprule
+./scripts/dev.sh&build the compiler, install dependencies, start backend and website, print the URL\\
+./scripts/serve.sh&single-process production mode on port 8000\\
+./scripts/test.sh&every test suite and fuzzer\\
+./scripts/sanitize.sh&ASan/UBSan build with tests and fuzzers\\
+./scripts/bench.sh&native vs CPython, allocator and inlining comparisons\\
+docker build -t nova .&container with compiler, API and studio\\\bottomrule
+\end{tabularx}
+\end{center}
+\sloppy Command line: \code{novac compile --run < prog.nova}, \code{novac asm}, \code{novac sql < script.sql}, \code{scripts/nova-native.sh prog.nova -o prog}, and \code{scripts/nova-lsp.sh} for the language server.
+
+% ------------------------------------------------------------------ 14
+\section{Limitations and future work}
+\begin{itemize}
+\item The debugger replays a recorded trace (capped, and flagged when truncated) rather than controlling a live process.
+\item The native back end targets x86-64 System~V only; the VM and the native code share arithmetic definitions.
+\item Optimizations are not yet loop-aware (no loop-invariant code motion or global value numbering).
+\item NOVA-SQL has no subqueries, \code{UNION}, window functions, indexes or persistence.
+\item Free-model AI output varies in quality, which is why every suggestion is re-checked by the compiler.
+\end{itemize}
+\textbf{Future work:} loop optimizations on the SSA form, an LLVM-IR back end, LALR/Pager table-size comparison, garbage-collected heap visualisation and cost-based SQL join ordering.
+
+\section{Conclusion}
+NOVA shows that a compiler can be both a serious engineering artefact and a transparent teaching instrument. Every claim in this report is backed by a number that the system itself produces: 432 conflict-free parser states, a 64\,\% IR reduction, $12\times$ native speed-up, and agreement with three independent oracles. The result is a platform where a student can watch a program become tokens, trees, IR, optimized IR, bytecode and machine code -- and trust what they see.
+
+\appendix
+\section{Code size by component}
+\begin{center}\small
+\begin{tabular}{@{}lr@{\qquad}lr@{}}\toprule
+Component&Lines&Component&Lines\\\midrule
+Lexer&217&Backend service (Python)&1\,811\\
+LR(1) parser generator&547&Backend tests&690\\
+AST construction&225&Frontend studio (TS/React)&3\,763\\
+Semantic analysis&482&C++ unit tests&1\,612\\
+IR generation&333&C++ headers&1\,045\\
+Optimizer (with inlining)&495&NOVA-SQL&1\,605\\
+CFG / SSA / data-flow&650&Native runtime (C)&66\\
+Bytecode, verifier, x86-64&648&Scripts&570\\
+VM and reference interpreter&456&Pipeline, diagnostics, CLI&740\\\midrule
+\multicolumn{3}{@{}l}{\textbf{Total}}&\textbf{15\,955}\\\bottomrule
+\end{tabular}
+\end{center}
+\section{Repository layout}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily}l X@{}}\toprule
+compiler/&C++17 core: lexer, parser, AST, semantic, IR, optimizer, analysis, codegen, VM, SQL, tests\\
+backend/&FastAPI service and pytest suite\\
+frontend/&React studio and Vitest suite\\
+examples/&NOVA programs (valid, error, runtime error) and SQL scripts\\
+benchmarks/&fib, primes and inlining workloads with CPython equivalents\\
+editors/&VS Code language-server client\\
+scripts/&dev, serve, test, sanitize, bench, fuzzers\\
+docs/ \& report/&Specifications and the 114-page technical report\\
+reports/&This report and the user guide\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Glossary}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}l X@{}}\toprule
+AST&Abstract syntax tree: the program's structure without punctuation\\
+Basic block&Straight-line code with one entry and one exit\\
+CFG&Control-flow graph of basic blocks\\
+CSE&Common subexpression elimination\\
+Dominator&Block $d$ dominates $n$ if every path from entry to $n$ passes through $d$\\
+FIRST / FOLLOW&Sets of terminals that can start / follow a nonterminal\\
+IR&Intermediate representation (here, three-address code)\\
+LR(1)&Left-to-right, rightmost derivation, one token of lookahead\\
+Liveness&A variable is live if its current value may still be read\\
+$\varphi$ node&SSA merge that selects a value by incoming edge\\
+SSA&Static single assignment: each variable is assigned once\\
+Spill&Storing a value on the stack because no register is free\\
+Trap&A runtime error such as division by zero\\
+VM&Virtual machine that executes bytecode\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{document}
